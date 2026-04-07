@@ -1,0 +1,6 @@
+#! /bin/sh
+
+minutes=2
+server="http://c1.back.smartmet.fmi.fi:8081"
+
+curl "$server/admin?what=lastrequests&format=json&minutes=$minutes" | jq .

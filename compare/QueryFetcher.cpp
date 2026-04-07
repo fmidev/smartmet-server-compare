@@ -1,0 +1,113 @@
+#include "QueryFetcher.h"
+#include "UrlUtils.h"
+
+#include <smartmet/spine/TcpMultiQuery.h>
+
+#include <nlohmann/json.hpp>
+
+#include <string>
+#include <utility>
+#include <vector>
+
+// ---------------------------------------------------------------------------
+// Internal helpers
+// ---------------------------------------------------------------------------
+
+static std::string make_admin_path(int minutes)
+{
+  return "/admin?what=lastrequests&format=json&minutes=" + std::to_string(minutes);
+}
+
+// Strip the HTTP response headers and return only the body.
+static std::string strip_http_headers(const std::string& raw)
+{
+  const std::string sep = "\r\n\r\n";
+  auto pos = raw.find(sep);
+  if (pos != std::string::npos)
+    return raw.substr(pos + sep.size());
+
+  // Fall back: some servers use bare LF
+  const std::string sep2 = "\n\n";
+  pos = raw.find(sep2);
+  if (pos != std::string::npos)
+    return raw.substr(pos + sep2.size());
+
+  return raw;
+}
+
+// ---------------------------------------------------------------------------
+// QueryFetcher
+// ---------------------------------------------------------------------------
+
+/* static */
+std::pair<std::vector<QueryInfo>, std::string> QueryFetcher::fetch(const std::string& server_url,
+                                                                    const std::string& prefix,
+                                                                    int minutes)
+{
+  auto addr = parse_server_url(server_url);
+  if (!addr)
+    return {{}, "Cannot parse server URL: " + server_url};
+
+  const std::string path = make_admin_path(minutes);
+  const std::string request = build_http_request(addr->host, path);
+
+  SmartMet::Spine::TcpMultiQuery query(30);
+  query.add_query("admin", addr->host, addr->port, request);
+  query.execute();
+
+  const auto& resp = query["admin"];
+  if (resp.error_code)
+    return {{}, "Network error fetching queries: " + resp.error_desc};
+
+  const std::string body = strip_http_headers(resp.body);
+
+  std::vector<QueryInfo> queries;
+  try
+  {
+    auto j = nlohmann::json::parse(body);
+    if (!j.is_array())
+      return {{}, "Expected a JSON array from /admin?what=lastrequests"};
+
+    for (const auto& item : j)
+    {
+      std::string rs = item.value("RequestString", std::string{});
+      if (rs.empty())
+        continue;
+      if (!prefix.empty() && rs.substr(0, prefix.size()) != prefix)
+        continue;
+
+      QueryInfo qi;
+      qi.request_string = std::move(rs);
+      qi.time_utc = item.value("TimeUTC", std::string{});
+      queries.push_back(std::move(qi));
+    }
+  }
+  catch (const std::exception& e)
+  {
+    return {{}, std::string("JSON parse error: ") + e.what()};
+  }
+
+  return {std::move(queries), {}};
+}
+
+void QueryFetcher::fetch_async(std::string server_url,
+                               std::string prefix,
+                               int minutes,
+                               Callback cb)
+{
+  if (thread_.joinable())
+    thread_.detach();
+
+  thread_ = std::thread(
+      [=, cb = std::move(cb)]()
+      {
+        auto [queries, error] = fetch(server_url, prefix, minutes);
+        cb(std::move(queries), std::move(error));
+      });
+}
+
+QueryFetcher::~QueryFetcher()
+{
+  if (thread_.joinable())
+    thread_.detach();
+}

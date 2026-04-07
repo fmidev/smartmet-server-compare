@@ -1,0 +1,48 @@
+include $(shell smartbuildcfg --prefix)/share/smartmet/devel/makefile.inc
+
+PROG = smartmet-server-compare
+
+GTKMM_CLAGS = $(shell pkg-config --cflags gtkmm-3.0)
+GTKMM_LDFLAGS = $(shell pkg-config --libs gtkmm-3.0)
+
+LIBS += \
+	$(PREFIX_LDFLAGS) \
+	-lsmartmet-spine \
+	-lsmartmet-macgyver \
+	$(GTKMM_LDFLAGS) \
+	-ltinyxml2 \
+	$(REQUIRED_LIBS) \
+	-lpthread -lrt
+
+CFLAGS += \
+	$(PREFIX_CFLAGS) \
+	$(GTKMM_CLAGS) \
+	$(REQUIRED_CFLAGS) \
+	-I. -I.. -I../..
+
+SRC_DIRS := compare
+vpath %.cpp $(SRC_DIRS)
+SRCS := $(foreach dir,$(SRC_DIRS),$(wildcard $(dir)/*.cpp))
+HDRS := $(filter-out $(INTERNAL_HEADERS), $(foreach dir,$(SRC_DIRS),$(wildcard $(dir)/*.h)))
+OBJS := $(patsubst %.cpp, obj/%.o, $(notdir $(SRCS)))
+
+.SUFFIXES: $(SUFFIXES) .cpp
+
+all: smartmet-server-compare
+
+clean:
+	rm -rf obj smartmet-server-compare
+
+smartmet-server-compare: objdir $(OBJS)
+	$(CXX) $(CFLAGS) -o $@ $(OBJS) $(LIBS)
+
+objdir:
+	mkdir -p $(objdir)
+
+obj/%.o : %.cpp
+	@mkdir -p $(dir $@)
+	$(CXX) $(CFLAGS) $(INCLUDES) -c -MD -MF $(patsubst obj/%.o, obj/%.d, $@) -MT $@ -o $@ $<
+
+ifneq ($(wildcard obj/*.d),)
+-include $(wildcard obj/*.d)
+endif

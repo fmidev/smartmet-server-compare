@@ -5,6 +5,7 @@
 
 #include <nlohmann/json.hpp>
 
+#include <fstream>
 #include <string>
 #include <unordered_set>
 #include <utility>
@@ -89,6 +90,39 @@ std::pair<std::vector<QueryInfo>, std::string> QueryFetcher::fetch(const std::st
   catch (const std::exception& e)
   {
     return {{}, std::string("JSON parse error: ") + e.what()};
+  }
+
+  return {std::move(queries), {}};
+}
+
+/* static */
+std::pair<std::vector<QueryInfo>, std::string> QueryFetcher::fetch_from_file(
+    const std::filesystem::path& path)
+{
+  std::ifstream f(path);
+  if (!f)
+    return {{}, "Cannot open file: " + path.string()};
+
+  std::vector<QueryInfo> queries;
+  std::unordered_set<std::string> seen;
+  std::string line;
+
+  while (std::getline(f, line))
+  {
+    // Strip trailing carriage-return (Windows line endings)
+    if (!line.empty() && line.back() == '\r')
+      line.pop_back();
+
+    // Skip blank lines and comments
+    if (line.empty() || line.front() == '#')
+      continue;
+
+    if (!seen.insert(line).second)  // duplicate
+      continue;
+
+    QueryInfo qi;
+    qi.request_string = std::move(line);
+    queries.push_back(std::move(qi));
   }
 
   return {std::move(queries), {}};

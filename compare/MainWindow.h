@@ -51,6 +51,7 @@ class MainWindow : public Gtk::Window
 
   // ----- Signal handlers -----
   void on_fetch_clicked();
+  void on_load_file_clicked();
   void on_compare_clicked();
   void on_stop_clicked();
   void on_selection_changed();
@@ -82,6 +83,7 @@ class MainWindow : public Gtk::Window
   Gtk::Label lbl_minutes_{"Minutes:"};
   Gtk::SpinButton spin_minutes_;
   Gtk::Button btn_fetch_{"Fetch queries"};
+  Gtk::Button btn_load_file_{"Load from file…"};
 
   // Row 2: target servers
   Gtk::Box row2_{Gtk::ORIENTATION_HORIZONTAL, 6};

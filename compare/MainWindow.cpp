@@ -2,6 +2,7 @@
 
 #include <gtkmm/cellrenderertext.h>
 #include <gtkmm/entry.h>
+#include <gtkmm/filechooserdialog.h>
 #include <gtkmm/messagedialog.h>
 #include <gtkmm/treepath.h>
 
@@ -101,6 +102,7 @@ void MainWindow::build_ui()
   spin_minutes_.set_width_chars(5);
 
   btn_fetch_.signal_clicked().connect(sigc::mem_fun(*this, &MainWindow::on_fetch_clicked));
+  btn_load_file_.signal_clicked().connect(sigc::mem_fun(*this, &MainWindow::on_load_file_clicked));
 
   row1_.set_border_width(4);
   row1_.pack_start(lbl_source_, false, false);
@@ -110,6 +112,7 @@ void MainWindow::build_ui()
   row1_.pack_start(lbl_minutes_, false, false);
   row1_.pack_start(spin_minutes_, false, false);
   row1_.pack_start(btn_fetch_, false, false);
+  row1_.pack_start(btn_load_file_, false, false);
 
   // ---- Row 2: target servers ----
   lbl_srv1_.set_xalign(1.0f);
@@ -250,6 +253,42 @@ void MainWindow::on_fetch_dispatch()
   }
 
   on_queries_fetched(std::move(result.first));
+}
+
+void MainWindow::on_load_file_clicked()
+{
+  Gtk::FileChooserDialog dlg(*this, "Select request-list file", Gtk::FILE_CHOOSER_ACTION_OPEN);
+  dlg.add_button("_Cancel", Gtk::RESPONSE_CANCEL);
+  dlg.add_button("_Open",   Gtk::RESPONSE_OK);
+
+  auto filter_txt = Gtk::FileFilter::create();
+  filter_txt->set_name("Text files (*.txt)");
+  filter_txt->add_pattern("*.txt");
+  dlg.add_filter(filter_txt);
+
+  auto filter_all = Gtk::FileFilter::create();
+  filter_all->set_name("All files");
+  filter_all->add_pattern("*");
+  dlg.add_filter(filter_all);
+
+  if (dlg.run() != Gtk::RESPONSE_OK)
+    return;
+
+  const std::string path = dlg.get_filename();
+  auto [queries, error] = QueryFetcher::fetch_from_file(path);
+
+  if (!error.empty())
+  {
+    set_status("File error: " + error);
+    return;
+  }
+
+  list_store_->clear();
+  queries_.clear();
+  results_.clear();
+  diff_view_.clear();
+
+  on_queries_fetched(std::move(queries));
 }
 
 void MainWindow::on_queries_fetched(std::vector<QueryInfo> queries)
@@ -454,6 +493,7 @@ void MainWindow::set_status(const Glib::ustring& msg)
 void MainWindow::set_buttons_running(bool running)
 {
   btn_fetch_.set_sensitive(!running);
+  btn_load_file_.set_sensitive(!running);
   btn_compare_.set_sensitive(!running);
   btn_stop_.set_sensitive(running);
 }

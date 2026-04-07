@@ -5,4 +5,4 @@ Application may get requests
 - by fetching last requests of specified number of minutes from SmartMet server (note requires admin access to backend server, which should normally be blocked outside local network)
 
 Sample screenshot of application:
-<img width="1600" height="1275" alt="image" src="https://github.com/user-attachments/assets/366e9ee6-addf-45ce-831d-c0f537e5118a" />
+<img width="1912" height="1166" alt="image" src="doc/smartmet-server-compare-screenshot.png" />

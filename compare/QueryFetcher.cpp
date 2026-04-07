@@ -6,6 +6,7 @@
 #include <nlohmann/json.hpp>
 
 #include <string>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -68,12 +69,15 @@ std::pair<std::vector<QueryInfo>, std::string> QueryFetcher::fetch(const std::st
     if (!j.is_array())
       return {{}, "Expected a JSON array from /admin?what=lastrequests"};
 
+    std::unordered_set<std::string> seen;
     for (const auto& item : j)
     {
       std::string rs = item.value("RequestString", std::string{});
       if (rs.empty())
         continue;
       if (!prefix.empty() && rs.substr(0, prefix.size()) != prefix)
+        continue;
+      if (!seen.insert(rs).second)  // duplicate – skip
         continue;
 
       QueryInfo qi;

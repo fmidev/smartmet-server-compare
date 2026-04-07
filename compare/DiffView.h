@@ -14,9 +14,12 @@
  * perfectly synchronised.
  *
  * Colour coding:
- *   - Equal lines    : default background
- *   - Deleted lines  : red background (left) / grey placeholder (right)
- *   - Inserted lines : grey placeholder (left) / green background (right)
+ *   - Equal lines             : default background
+ *   - Deleted lines           : light-red background (left) / grey placeholder (right)
+ *   - Inserted lines          : grey placeholder (left) / light-green background (right)
+ *   - Changed char runs       : darker red / darker green overlaid on the line colour
+ *     (paired DELETE+ADD lines get a character-level diff so only the actually
+ *      different characters are highlighted with the stronger colour)
  *
  * The diff is computed with the dtl (Diff Template Library).
  */
@@ -67,11 +70,15 @@ class DiffView : public Gtk::Box
   Gtk::TextView left_view_;
   Gtk::TextView right_view_;
 
-  // Text buffer tags (created once in the constructor)
-  Glib::RefPtr<Gtk::TextBuffer::Tag> tag_del_;        // red bg, left pane
-  Glib::RefPtr<Gtk::TextBuffer::Tag> tag_ins_;        // green bg, right pane
-  Glib::RefPtr<Gtk::TextBuffer::Tag> tag_ph_left_;    // grey placeholder, left
-  Glib::RefPtr<Gtk::TextBuffer::Tag> tag_ph_right_;   // grey placeholder, right
+  // Text buffer tags (created once in the constructor).
+  // Line-level tags are created first so char-level tags get higher priority
+  // in the tag table and override the line background on individual characters.
+  Glib::RefPtr<Gtk::TextBuffer::Tag> tag_del_;        // light-red bg, whole deleted line (left)
+  Glib::RefPtr<Gtk::TextBuffer::Tag> tag_ins_;        // light-green bg, whole inserted line (right)
+  Glib::RefPtr<Gtk::TextBuffer::Tag> tag_ph_left_;    // grey placeholder line (left)
+  Glib::RefPtr<Gtk::TextBuffer::Tag> tag_ph_right_;   // grey placeholder line (right)
+  Glib::RefPtr<Gtk::TextBuffer::Tag> tag_del_char_;   // darker-red, changed char runs (left)
+  Glib::RefPtr<Gtk::TextBuffer::Tag> tag_ins_char_;   // darker-green, changed char runs (right)
 
   bool syncing_scroll_{false};
 };

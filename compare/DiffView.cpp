@@ -20,6 +20,91 @@ static std::vector<std::string> split_lines(const std::string& text)
   return lines;
 }
 
+// Character-level SES for two strings.
+using CharSes = std::vector<std::pair<char, dtl::elemInfo>>;
+
+static CharSes char_ses(const std::string& from, const std::string& to)
+{
+  dtl::Diff<char, std::string> d(from, to);
+  d.compose();
+  return d.getSes().getSequence();
+}
+
+// Insert one line of text at `mark`, applying a whole-line tag and optionally
+// a character-level tag on top.
+//
+//   buf          – target buffer
+//   mark         – right-gravity mark at the append position
+//   text         – line text (newline is appended automatically)
+//   line_tag     – applied to the entire inserted line
+//   char_tag     – applied only to differing character runs (may be null)
+//   ses          – character-level SES for the paired line (may be null)
+//   keep_type    – SES_DELETE for the left/delete pane, SES_ADD for the right/insert pane
+//                  characters with this type (or SES_COMMON) are part of our text;
+//                  characters of the opposite type belong to the other pane only
+static void insert_line(Glib::RefPtr<Gtk::TextBuffer>&          buf,
+                        Glib::RefPtr<Gtk::TextMark>&             mark,
+                        const std::string&                       text,
+                        const Glib::RefPtr<Gtk::TextBuffer::Tag>& line_tag,
+                        const Glib::RefPtr<Gtk::TextBuffer::Tag>& char_tag,
+                        const CharSes*                            ses,
+                        dtl::edit_t                              keep_type)
+{
+  const int start = mark->get_iter().get_offset();
+  buf->insert(mark->get_iter(), text + "\n");
+  buf->apply_tag(line_tag, buf->get_iter_at_offset(start), mark->get_iter());
+
+  if (!ses || !char_tag)
+    return;
+
+  // Walk the character SES.  For each character that belongs to our pane
+  // (keep_type or COMMON), advance `pos`.  Highlight runs where type ==
+  // keep_type (i.e. the char is absent from the other pane → it changed).
+  int pos = start;
+  int run_start = -1;  // start of the current highlighted run (-1 = no run)
+
+  auto flush_run = [&](int end_pos)
+  {
+    if (run_start >= 0 && end_pos > run_start)
+    {
+      buf->apply_tag(char_tag,
+                     buf->get_iter_at_offset(run_start),
+                     buf->get_iter_at_offset(end_pos));
+      run_start = -1;
+    }
+  };
+
+  for (const auto& [ch, info] : *ses)
+  {
+    const dtl::edit_t t = info.type;
+
+    if (t == dtl::SES_COMMON)
+    {
+      flush_run(pos);
+      ++pos;
+    }
+    else if (t == keep_type)
+    {
+      // Differing character on our side – start/continue highlighted run
+      if (run_start < 0)
+        run_start = pos;
+      ++pos;
+    }
+    // else: t == the other side's type; character not in our text, skip
+  }
+  flush_run(pos);
+}
+
+// Insert an empty placeholder line at mark.
+static void insert_placeholder(Glib::RefPtr<Gtk::TextBuffer>&          buf,
+                                Glib::RefPtr<Gtk::TextMark>&             mark,
+                                const Glib::RefPtr<Gtk::TextBuffer::Tag>& tag)
+{
+  const int start = mark->get_iter().get_offset();
+  buf->insert(mark->get_iter(), "\n");
+  buf->apply_tag(tag, buf->get_iter_at_offset(start), mark->get_iter());
+}
+
 // ---------------------------------------------------------------------------
 // DiffView – construction
 // ---------------------------------------------------------------------------
@@ -32,15 +117,16 @@ DiffView::DiffView() : Gtk::Box(Gtk::ORIENTATION_HORIZONTAL, 0)
   pack_start(left_col_, true, true, 0);
   pack_start(right_col_, true, true, 0);
 
-  // Create text buffer tags
   auto lbuf = left_view_.get_buffer();
   auto rbuf = right_view_.get_buffer();
 
+  // Line-level tags – created first so they get lower priority in the tag
+  // table than the character-level tags defined below.
   tag_del_ = lbuf->create_tag("del");
-  tag_del_->property_background() = "#ffcccc";
+  tag_del_->property_background() = "#ffcccc";  // light red
 
   tag_ins_ = rbuf->create_tag("ins");
-  tag_ins_->property_background() = "#ccffcc";
+  tag_ins_->property_background() = "#ccffcc";  // light green
 
   tag_ph_left_ = lbuf->create_tag("ph");
   tag_ph_left_->property_background() = "#e8e8e8";
@@ -49,6 +135,14 @@ DiffView::DiffView() : Gtk::Box(Gtk::ORIENTATION_HORIZONTAL, 0)
   tag_ph_right_ = rbuf->create_tag("ph");
   tag_ph_right_->property_background() = "#e8e8e8";
   tag_ph_right_->property_foreground() = "#b0b0b0";
+
+  // Character-level tags – created after line-level tags so they have higher
+  // priority and override the line background on individual characters.
+  tag_del_char_ = lbuf->create_tag("del_c");
+  tag_del_char_->property_background() = "#ff8888";  // darker red
+
+  tag_ins_char_ = rbuf->create_tag("ins_c");
+  tag_ins_char_->property_background() = "#88ff88";  // darker green
 
   connect_scroll_sync();
   show_all();
@@ -112,7 +206,7 @@ void DiffView::set_labels(const std::string& label1, const std::string& label2)
 }
 
 // ---------------------------------------------------------------------------
-// Text diff using dtl
+// Text diff using dtl – two-level (line + character)
 // ---------------------------------------------------------------------------
 
 void DiffView::set_texts(const std::string& text1,
@@ -133,57 +227,62 @@ void DiffView::set_texts(const std::string& text1,
   lbuf->set_text("");
   rbuf->set_text("");
 
-  // GTK text iterators are invalidated by every insert() call.  Use marks
-  // instead: a mark is a persistent position that survives buffer mutations.
-  // left_gravity=false (right gravity) makes the mark advance past newly
-  // inserted text, so it always sits at the current append position.
+  // Right-gravity marks survive every insert() call and advance past new text.
   auto lmark = lbuf->create_mark(lbuf->end(), false);
   auto rmark = rbuf->create_mark(rbuf->end(), false);
 
-  for (const auto& [elem, info] : d.getSes().getSequence())
+  // Walk the line-level SES.  We process COMMON lines immediately.
+  // For consecutive DELETE / ADD elements we collect them into a group first,
+  // then pair them up for character-level diffing.
+  const auto& ses = d.getSes().getSequence();
+  std::size_t i = 0;
+
+  while (i < ses.size())
   {
-    switch (info.type)
+    const auto& [elem, info] = ses[i];
+
+    if (info.type == dtl::SES_COMMON)
     {
-      case dtl::SES_COMMON:
-        lbuf->insert(lmark->get_iter(), elem + "\n");
-        rbuf->insert(rmark->get_iter(), elem + "\n");
-        break;
+      lbuf->insert(lmark->get_iter(), elem + "\n");
+      rbuf->insert(rmark->get_iter(), elem + "\n");
+      ++i;
+      continue;
+    }
 
-      case dtl::SES_DELETE:
-      {
-        // Red line on left, grey placeholder on right.
-        // Save start offset as integer (immune to invalidation), then insert,
-        // then reconstruct both iterators from the now-updated mark.
-        int loff = lmark->get_iter().get_offset();
-        lbuf->insert(lmark->get_iter(), elem + "\n");
-        lbuf->apply_tag(tag_del_,
-                        lbuf->get_iter_at_offset(loff),
-                        lmark->get_iter());
+    // Collect the next contiguous block of non-COMMON elements.
+    std::vector<std::string> dels, adds;
+    while (i < ses.size() && ses[i].second.type != dtl::SES_COMMON)
+    {
+      if (ses[i].second.type == dtl::SES_DELETE)
+        dels.push_back(ses[i].first);
+      else
+        adds.push_back(ses[i].first);
+      ++i;
+    }
 
-        int roff = rmark->get_iter().get_offset();
-        rbuf->insert(rmark->get_iter(), "\n");
-        rbuf->apply_tag(tag_ph_right_,
-                        rbuf->get_iter_at_offset(roff),
-                        rmark->get_iter());
-        break;
-      }
+    // Pair up deletions and insertions: paired lines get character-level diff.
+    const std::size_t pairs = std::min(dels.size(), adds.size());
 
-      case dtl::SES_ADD:
-      {
-        // Grey placeholder on left, green line on right.
-        int loff = lmark->get_iter().get_offset();
-        lbuf->insert(lmark->get_iter(), "\n");
-        lbuf->apply_tag(tag_ph_left_,
-                        lbuf->get_iter_at_offset(loff),
-                        lmark->get_iter());
+    for (std::size_t j = 0; j < pairs; ++j)
+    {
+      const auto cses = char_ses(dels[j], adds[j]);
 
-        int roff = rmark->get_iter().get_offset();
-        rbuf->insert(rmark->get_iter(), elem + "\n");
-        rbuf->apply_tag(tag_ins_,
-                        rbuf->get_iter_at_offset(roff),
-                        rmark->get_iter());
-        break;
-      }
+      insert_line(lbuf, lmark, dels[j], tag_del_, tag_del_char_, &cses, dtl::SES_DELETE);
+      insert_line(rbuf, rmark, adds[j], tag_ins_, tag_ins_char_, &cses, dtl::SES_ADD);
+    }
+
+    // Unmatched deletions (more DELETEs than ADDs): whole-line highlight only.
+    for (std::size_t j = pairs; j < dels.size(); ++j)
+    {
+      insert_line(lbuf, lmark, dels[j], tag_del_, {}, nullptr, dtl::SES_DELETE);
+      insert_placeholder(rbuf, rmark, tag_ph_right_);
+    }
+
+    // Unmatched insertions (more ADDs than DELETEs): whole-line highlight only.
+    for (std::size_t j = pairs; j < adds.size(); ++j)
+    {
+      insert_placeholder(lbuf, lmark, tag_ph_left_);
+      insert_line(rbuf, rmark, adds[j], tag_ins_, {}, nullptr, dtl::SES_ADD);
     }
   }
 

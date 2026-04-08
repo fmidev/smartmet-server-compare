@@ -77,7 +77,8 @@ CompareRunner::~CompareRunner()
 void CompareRunner::start(std::vector<QueryInfo> queries,
                           std::string server1_url,
                           std::string server2_url,
-                          int max_concurrent)
+                          int max_concurrent,
+                          size_t max_size)
 {
   stop();
 
@@ -89,7 +90,8 @@ void CompareRunner::start(std::vector<QueryInfo> queries,
                         std::move(queries),
                         std::move(server1_url),
                         std::move(server2_url),
-                        std::max(1, max_concurrent));
+                        std::max(1, max_concurrent),
+                        max_size);
 }
 
 void CompareRunner::stop()
@@ -125,7 +127,8 @@ void CompareRunner::on_dispatch()
 void CompareRunner::worker(std::vector<QueryInfo> queries,
                            std::string server1_url,
                            std::string server2_url,
-                           int max_concurrent)
+                           int max_concurrent,
+                           size_t max_size)
 {
   auto addr1 = parse_server_url(server1_url);
   auto addr2 = parse_server_url(server2_url);
@@ -187,6 +190,14 @@ void CompareRunner::worker(std::vector<QueryInfo> queries,
         if (!result.error1.empty() || !result.error2.empty())
         {
           result.status = CompareStatus::ERROR;
+        }
+        else if (max_size > 0 && (result.body1.size() > max_size || result.body2.size() > max_size))
+        {
+          if (result.body1.size() > max_size)
+            result.error1 = "Response size exceeds limit";
+          if (result.body2.size() > max_size)
+            result.error2 = "Response size exceeds limit";
+          result.status = CompareStatus::TOO_LARGE;
         }
         else
         {

@@ -24,6 +24,7 @@ MainWindow::MainWindow()
   load_combo(ent_srv2_,   "server2");
   spin_minutes_.set_value(settings_.get_int("minutes", 2));
   spin_concurrent_.set_value(settings_.get_int("max_concurrent", 4));
+  spin_max_size_.set_value(settings_.get_int("max_size_mb", 10));
 
   // Wire up dispatcher for fetch thread results
   fetch_dispatcher_.connect(sigc::mem_fun(*this, &MainWindow::on_fetch_dispatch));
@@ -126,6 +127,11 @@ void MainWindow::build_ui()
   spin_concurrent_.set_increments(1, 4);
   spin_concurrent_.set_width_chars(4);
 
+  lbl_max_size_.set_xalign(1.0f);
+  spin_max_size_.set_range(0, 1024);
+  spin_max_size_.set_increments(1, 10);
+  spin_max_size_.set_width_chars(4);
+
   btn_compare_.signal_clicked().connect(sigc::mem_fun(*this, &MainWindow::on_compare_clicked));
   btn_stop_.signal_clicked().connect(sigc::mem_fun(*this, &MainWindow::on_stop_clicked));
 
@@ -136,6 +142,8 @@ void MainWindow::build_ui()
   row2_.pack_start(ent_srv2_, true, true);
   row2_.pack_start(lbl_concurrent_, false, false);
   row2_.pack_start(spin_concurrent_, false, false);
+  row2_.pack_start(lbl_max_size_, false, false);
+  row2_.pack_start(spin_max_size_, false, false);
   row2_.pack_start(btn_compare_, false, false);
   row2_.pack_start(btn_stop_, false, false);
 
@@ -328,6 +336,7 @@ void MainWindow::on_compare_clicked()
   const std::string srv1           = combo_text(ent_srv1_);
   const std::string srv2           = combo_text(ent_srv2_);
   const int         max_concurrent = static_cast<int>(spin_concurrent_.get_value());
+  const size_t      max_size_mb    = static_cast<size_t>(spin_max_size_.get_value());
 
   if (srv1.empty() || srv2.empty())
   {
@@ -339,6 +348,7 @@ void MainWindow::on_compare_clicked()
   save_combo(ent_srv1_, "server1");
   save_combo(ent_srv2_, "server2");
   settings_.set_int("max_concurrent", max_concurrent);
+  settings_.set_int("max_size_mb", static_cast<int>(max_size_mb));
 
   // Reset all results to PENDING
   for (auto& r : results_)
@@ -363,7 +373,7 @@ void MainWindow::on_compare_clicked()
   set_buttons_running(true);
   set_status("Comparing…");
 
-  runner_.start(queries_, srv1, srv2, max_concurrent);
+  runner_.start(queries_, srv1, srv2, max_concurrent, max_size_mb * 1024 * 1024);
 }
 
 void MainWindow::on_stop_clicked()
@@ -442,7 +452,7 @@ void MainWindow::show_result_in_diff(const CompareResult& result)
     return;
   }
 
-  if (result.status == CompareStatus::ERROR)
+  if (result.status == CompareStatus::ERROR || result.status == CompareStatus::TOO_LARGE)
   {
     diff_view_.set_error(result.error1, result.error2, srv1_url, srv2_url);
     return;
@@ -480,6 +490,7 @@ Glib::ustring MainWindow::status_text(CompareStatus s)
     case CompareStatus::EQUAL:     return "EQUAL";
     case CompareStatus::DIFFERENT: return "DIFF";
     case CompareStatus::ERROR:     return "ERROR";
+    case CompareStatus::TOO_LARGE: return "TOO_LARGE";
   }
   return "?";
 }

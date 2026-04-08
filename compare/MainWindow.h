@@ -78,6 +78,9 @@ class MainWindow : public Gtk::Window
   Gtk::Box row1_{Gtk::ORIENTATION_HORIZONTAL, 6};
   Gtk::Label lbl_source_{"Source server:"};
   Gtk::ComboBoxText ent_source_{true};   // true = has_entry
+  
+  Gtk::Label lbl_max_size_{"Max size (MB):"};
+  Gtk::SpinButton spin_max_size_;
   Gtk::Label lbl_prefix_{"Prefix filter:"};
   Gtk::ComboBoxText ent_prefix_{true};
   Gtk::Label lbl_minutes_{"Minutes:"};

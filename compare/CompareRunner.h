@@ -37,7 +37,8 @@ class CompareRunner
   void start(std::vector<QueryInfo> queries,
              std::string server1_url,
              std::string server2_url,
-             int max_concurrent);
+             int max_concurrent,
+             size_t max_size);
 
   // Request early stop; blocks until the worker exits.
   void stop();
@@ -48,7 +49,8 @@ class CompareRunner
   void worker(std::vector<QueryInfo> queries,
               std::string server1_url,
               std::string server2_url,
-              int max_concurrent);
+              int max_concurrent,
+              size_t max_size);
 
   void on_dispatch();
 

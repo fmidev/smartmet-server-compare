@@ -1,7 +1,7 @@
 #pragma once
 #include <string>
 
-enum class CompareStatus { PENDING, RUNNING, EQUAL, DIFFERENT, ERROR };
+enum class CompareStatus { PENDING, RUNNING, EQUAL, DIFFERENT, ERROR, TOO_LARGE };
 
 // Detected semantic content category.  Ordered roughly from most- to
 // least-specific so callers can compare with >=.

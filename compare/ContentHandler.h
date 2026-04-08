@@ -15,7 +15,7 @@
  *   Returns a normalised, human-readable rendering suitable for line-by-line
  *   text diffing:
  *     TEXT  → body as-is
- *     JSON  → pretty-printed with 2-space indent (via nlohmann/json)
+ *     JSON  → pretty-printed with 2-space indent (via jsoncpp)
  *     XML   → pretty-printed with tinyxml2
  *     IMAGE / BINARY → empty string  (caller should use byte comparison)
  *

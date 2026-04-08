@@ -3,7 +3,7 @@
 
 #include <smartmet/spine/TcpMultiQuery.h>
 
-#include <nlohmann/json.hpp>
+#include <json/json.h>
 
 #include <fstream>
 #include <string>
@@ -66,14 +66,21 @@ std::pair<std::vector<QueryInfo>, std::string> QueryFetcher::fetch(const std::st
   std::vector<QueryInfo> queries;
   try
   {
-    auto j = nlohmann::json::parse(body);
-    if (!j.is_array())
+    Json::Value j;
+    Json::CharReaderBuilder readerBuilder;
+    std::string errs;
+    std::unique_ptr<Json::CharReader> reader(readerBuilder.newCharReader());
+    if (!reader->parse(body.data(), body.data() + body.size(), &j, &errs))
+      return {{}, "JSON parse error: " + errs};
+
+    if (!j.isArray())
       return {{}, "Expected a JSON array from /admin?what=lastrequests"};
 
     std::unordered_set<std::string> seen;
     for (const auto& item : j)
     {
-      std::string rs = item.value("RequestString", std::string{});
+      std::string rs = item.isMember("RequestString") && item["RequestString"].isString() 
+                       ? item["RequestString"].asString() : "";
       if (rs.empty())
         continue;
       if (!prefix.empty() && rs.substr(0, prefix.size()) != prefix)
@@ -83,7 +90,8 @@ std::pair<std::vector<QueryInfo>, std::string> QueryFetcher::fetch(const std::st
 
       QueryInfo qi;
       qi.request_string = std::move(rs);
-      qi.time_utc = item.value("TimeUTC", std::string{});
+      qi.time_utc = item.isMember("TimeUTC") && item["TimeUTC"].isString() 
+                    ? item["TimeUTC"].asString() : "";
       queries.push_back(std::move(qi));
     }
   }

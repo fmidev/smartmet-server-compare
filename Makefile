@@ -11,6 +11,7 @@ LIBS += \
 	-lsmartmet-macgyver \
 	$(GTKMM_LDFLAGS) \
 	-ltinyxml2 \
+	-ljsoncpp \
 	$(REQUIRED_LIBS) \
 	-lpthread -lrt
 

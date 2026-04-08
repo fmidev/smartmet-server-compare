@@ -43,7 +43,7 @@ class Settings
   std::filesystem::path path_;
 
   // Internal storage – parsed JSON kept in memory as a flat map-of-variants.
-  // Using two separate maps avoids pulling nlohmann into the header.
+  // Using two separate maps avoids pulling jsoncpp into the header.
   struct Impl;
   std::unique_ptr<Impl> impl_;
 };

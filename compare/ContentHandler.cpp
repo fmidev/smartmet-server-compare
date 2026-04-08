@@ -1,6 +1,6 @@
 #include "ContentHandler.h"
 
-#include <nlohmann/json.hpp>
+#include <json/json.h>
 #include <tinyxml2.h>
 
 #include <algorithm>
@@ -97,14 +97,12 @@ static ContentKind sniff_body(const std::string& body)
   if (first == '{' || first == '[')
   {
     // Confirm it parses as JSON
-    try
-    {
-      [[maybe_unused]] auto j = nlohmann::json::parse(body);
+    Json::Value root;
+    Json::CharReaderBuilder builder;
+    std::string errs;
+    std::unique_ptr<Json::CharReader> reader(builder.newCharReader());
+    if (reader->parse(body.data(), body.data() + body.size(), &root, &errs))
       return ContentKind::JSON;
-    }
-    catch (...)
-    {
-    }
     return ContentKind::TEXT;  // malformed JSON → treat as text
   }
 
@@ -142,15 +140,20 @@ std::pair<std::string, std::string> format_for_diff(ContentKind kind, const std:
 
     case ContentKind::JSON:
     {
-      try
+      Json::Value j;
+      Json::CharReaderBuilder builder;
+      std::string errs;
+      std::unique_ptr<Json::CharReader> reader(builder.newCharReader());
+      if (reader->parse(body.data(), body.data() + body.size(), &j, &errs))
       {
-        auto j = nlohmann::json::parse(body);
-        return {j.dump(2), {}};
+        Json::StreamWriterBuilder writerBuilder;
+        writerBuilder["indentation"] = "  ";
+        return {Json::writeString(writerBuilder, j), {}};
       }
-      catch (const std::exception& e)
+      else
       {
         // Fall back to raw text so the user can still see the content
-        return {body, std::string("JSON parse error: ") + e.what()};
+        return {body, std::string("JSON parse error: ") + errs};
       }
     }
 

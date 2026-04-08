@@ -1,6 +1,6 @@
 #include "Settings.h"
 
-#include <nlohmann/json.hpp>
+#include <json/json.h>
 
 #include <cstdlib>
 #include <filesystem>
@@ -13,7 +13,7 @@
 
 struct Settings::Impl
 {
-  nlohmann::json data;
+  Json::Value data;
 };
 
 // ---------------------------------------------------------------------------
@@ -41,17 +41,25 @@ Settings::~Settings() = default;
 void Settings::load()
 {
   if (!std::filesystem::exists(path_))
+  {
+    impl_->data = Json::Value(Json::objectValue);
     return;
+  }
 
   try
   {
     std::ifstream f(path_);
-    impl_->data = nlohmann::json::parse(f);
+    Json::CharReaderBuilder builder;
+    std::string errs;
+    if (!Json::parseFromStream(builder, f, &impl_->data, &errs))
+    {
+      impl_->data = Json::Value(Json::objectValue);
+    }
   }
   catch (...)
   {
     // Corrupt file – start fresh
-    impl_->data = nlohmann::json::object();
+    impl_->data = Json::Value(Json::objectValue);
   }
 }
 
@@ -61,7 +69,11 @@ void Settings::save() const
   {
     std::filesystem::create_directories(path_.parent_path());
     std::ofstream f(path_);
-    f << impl_->data.dump(2) << "\n";
+    Json::StreamWriterBuilder builder;
+    builder["indentation"] = "  ";
+    std::unique_ptr<Json::StreamWriter> writer(builder.newStreamWriter());
+    writer->write(impl_->data, &f);
+    f << "\n";
   }
   catch (...)
   {
@@ -75,13 +87,17 @@ std::vector<std::string> Settings::history(const std::string& key) const
 {
   std::vector<std::string> result;
   const auto& d = impl_->data;
-  if (!d.contains("history") || !d["history"].contains(key))
+  if (!d.isMember("history") || !d["history"].isMember(key))
     return result;
 
-  for (const auto& item : d["history"][key])
+  const auto& arr = d["history"][key];
+  if (!arr.isArray())
+    return result;
+
+  for (const auto& item : arr)
   {
-    if (item.is_string())
-      result.push_back(item.get<std::string>());
+    if (item.isString())
+      result.push_back(item.asString());
   }
   return result;
 }
@@ -94,23 +110,25 @@ void Settings::add_to_history(const std::string& key,
     return;
 
   auto& arr = impl_->data["history"][key];
-  if (!arr.is_array())
-    arr = nlohmann::json::array();
+  if (!arr.isArray())
+    arr = Json::Value(Json::arrayValue);
 
-  // Remove existing occurrence so we can move it to the front
-  for (auto it = arr.begin(); it != arr.end(); ++it)
+  Json::Value new_arr(Json::arrayValue);
+  new_arr.append(value);
+  int count = 1;
+
+  for (const auto& item : arr)
   {
-    if (it->is_string() && it->get<std::string>() == value)
+    if (item.isString() && item.asString() == value)
+      continue;
+    if (count < max_items)
     {
-      arr.erase(it);
-      break;
+      new_arr.append(item);
+      count++;
     }
   }
 
-  arr.insert(arr.begin(), value);
-
-  if (static_cast<int>(arr.size()) > max_items)
-    arr.erase(arr.begin() + max_items, arr.end());
+  impl_->data["history"][key] = new_arr;
 
   save();
 }
@@ -120,13 +138,15 @@ void Settings::add_to_history(const std::string& key,
 int Settings::get_int(const std::string& key, int default_val) const
 {
   const auto& d = impl_->data;
-  if (d.contains("scalars") && d["scalars"].contains(key) && d["scalars"][key].is_number())
-    return d["scalars"][key].get<int>();
+  if (d.isMember("scalars") && d["scalars"].isMember(key) && d["scalars"][key].isNumeric())
+    return d["scalars"][key].asInt();
   return default_val;
 }
 
 void Settings::set_int(const std::string& key, int value)
 {
+  if (!impl_->data.isMember("scalars") || !impl_->data["scalars"].isObject())
+    impl_->data["scalars"] = Json::Value(Json::objectValue);
   impl_->data["scalars"][key] = value;
   save();
 }

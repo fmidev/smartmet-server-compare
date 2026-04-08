@@ -1,6 +1,7 @@
 include $(shell smartbuildcfg --prefix)/share/smartmet/devel/makefile.inc
 
 PROG = smartmet-server-compare
+SPEC = smartmet-server-compare
 
 GTKMM_CLAGS = $(shell pkg-config --cflags gtkmm-3.0)
 GTKMM_LDFLAGS = $(shell pkg-config --libs gtkmm-3.0)
@@ -29,10 +30,18 @@ OBJS := $(patsubst %.cpp, obj/%.o, $(notdir $(SRCS)))
 
 .SUFFIXES: $(SUFFIXES) .cpp
 
+.PHONY: all clean rpm
+
 all: smartmet-server-compare
 
 clean:
 	rm -rf obj smartmet-server-compare
+
+rpm: clean $(SPEC).spec
+	rm -f $(SPEC).tar.gz # Clean a possible leftover from previous attempt
+	tar -czvf $(SPEC).tar.gz --exclude test --exclude-vcs --transform "s,^,$(SPEC)/," *
+	rpmbuild -tb $(SPEC).tar.gz
+	rm -f $(SPEC).tar.gz
 
 smartmet-server-compare: objdir $(OBJS)
 	$(CXX) $(CFLAGS) -o $@ $(OBJS) $(LIBS)

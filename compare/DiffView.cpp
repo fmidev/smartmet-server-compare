@@ -109,13 +109,24 @@ static void insert_placeholder(Glib::RefPtr<Gtk::TextBuffer>&          buf,
 // DiffView – construction
 // ---------------------------------------------------------------------------
 
-DiffView::DiffView() : Gtk::Box(Gtk::ORIENTATION_HORIZONTAL, 0)
+DiffView::DiffView() : Gtk::Box(Gtk::ORIENTATION_VERTICAL, 0)
 {
   init_column(left_col_, left_label_, left_scroll_, left_view_);
   init_column(right_col_, right_label_, right_scroll_, right_view_);
 
-  pack_start(left_col_, true, true, 0);
-  pack_start(right_col_, true, true, 0);
+  h_box_.pack_start(left_col_, true, true, 0);
+  h_box_.pack_start(right_col_, true, true, 0);
+
+  // Use a common horizontal scrollbar for both text views
+  left_scroll_.set_policy(Gtk::POLICY_EXTERNAL, Gtk::POLICY_AUTOMATIC);
+  right_scroll_.set_policy(Gtk::POLICY_EXTERNAL, Gtk::POLICY_AUTOMATIC);
+
+  shared_hadj_ = Gtk::Adjustment::create(0.0, 0.0, 0.0, 0.1, 0.1, 0.0);
+  hscrollbar_.set_orientation(Gtk::ORIENTATION_HORIZONTAL);
+  hscrollbar_.set_adjustment(shared_hadj_);
+
+  pack_start(h_box_, true, true, 0);
+  pack_start(hscrollbar_, false, false, 0);
 
   auto lbuf = left_view_.get_buffer();
   auto rbuf = right_view_.get_buffer();
@@ -169,7 +180,8 @@ void DiffView::init_column(Gtk::Box& col,
   view.set_monospace(true);
 
   scroll.add(view);
-  scroll.set_policy(Gtk::POLICY_AUTOMATIC, Gtk::POLICY_AUTOMATIC);
+  // H-policy is configured later to use the external scrollbar
+  scroll.set_policy(Gtk::POLICY_EXTERNAL, Gtk::POLICY_AUTOMATIC);
 
   col.pack_start(lbl, false, false, 0);
   col.pack_start(scroll, true, true, 0);
@@ -197,6 +209,46 @@ void DiffView::connect_scroll_sync()
         lva->set_value(rva->get_value());
         syncing_scroll_ = false;
       });
+
+  auto lha = left_scroll_.get_hadjustment();
+  auto rha = right_scroll_.get_hadjustment();
+
+  auto update_shared_hadj_bounds = [this, lha, rha]()
+  {
+    double lower = std::min(lha->get_lower(), rha->get_lower());
+    double upper = std::max(lha->get_upper(), rha->get_upper());
+    double page_size = std::max(lha->get_page_size(), rha->get_page_size());
+    double step_inc = std::max(lha->get_step_increment(), rha->get_step_increment());
+    double page_inc = std::max(lha->get_page_increment(), rha->get_page_increment());
+    double val = shared_hadj_->get_value();
+    
+    // Clamp value to the new upper bound
+    if (val > upper - page_size)
+      val = std::max(lower, upper - page_size);
+
+    shared_hadj_->configure(val, lower, upper, step_inc, page_inc, page_size);
+  };
+
+  lha->signal_changed().connect(update_shared_hadj_bounds);
+  rha->signal_changed().connect(update_shared_hadj_bounds);
+
+  // When either view is scrolled (e.g. via keyboard), update the shared scrollbar
+  lha->signal_value_changed().connect([this, lha]() {
+    if (!syncing_scroll_) shared_hadj_->set_value(lha->get_value());
+  });
+  rha->signal_value_changed().connect([this, rha]() {
+    if (!syncing_scroll_) shared_hadj_->set_value(rha->get_value());
+  });
+
+  // When the shared scrollbar is moved, update both views
+  shared_hadj_->signal_value_changed().connect([this, lha, rha]() {
+    if (syncing_scroll_) return;
+    syncing_scroll_ = true;
+    double val = shared_hadj_->get_value();
+    lha->set_value(val);
+    rha->set_value(val);
+    syncing_scroll_ = false;
+  });
 }
 
 void DiffView::set_labels(const std::string& label1, const std::string& label2)

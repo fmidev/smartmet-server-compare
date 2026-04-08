@@ -2,6 +2,7 @@
 #include <gtkmm/box.h>
 #include <gtkmm/label.h>
 #include <gtkmm/scrolledwindow.h>
+#include <gtkmm/scrollbar.h>
 #include <gtkmm/textview.h>
 
 #include <string>
@@ -58,8 +59,12 @@ class DiffView : public Gtk::Box
 
   void set_labels(const std::string& label1, const std::string& label2);
 
+  Gtk::Box h_box_{Gtk::ORIENTATION_HORIZONTAL, 0};
   Gtk::Box left_col_{Gtk::ORIENTATION_VERTICAL, 0};
   Gtk::Box right_col_{Gtk::ORIENTATION_VERTICAL, 0};
+
+  Gtk::Scrollbar hscrollbar_;
+  Glib::RefPtr<Gtk::Adjustment> shared_hadj_;
 
   Gtk::Label left_label_;
   Gtk::Label right_label_;

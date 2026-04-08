@@ -119,11 +119,13 @@ class MainWindow : public Gtk::Window
   {
     Columns()
     {
+      add(col_number);
       add(col_index);
       add(col_status);
       add(col_time);
       add(col_request);
     }
+    Gtk::TreeModelColumn<int> col_number;
     Gtk::TreeModelColumn<int> col_index;
     Gtk::TreeModelColumn<Glib::ustring> col_status;
     Gtk::TreeModelColumn<Glib::ustring> col_time;

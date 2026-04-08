@@ -181,6 +181,10 @@ void MainWindow::setup_request_list()
   list_store_ = Gtk::ListStore::create(columns_);
   list_view_.set_model(list_store_);
 
+  auto* col_num = Gtk::manage(new Gtk::TreeViewColumn("#", columns_.col_number));
+  col_num->set_min_width(40);
+  list_view_.append_column(*col_num);
+
   auto* col_status = Gtk::manage(new Gtk::TreeViewColumn("Status"));
   auto* rend_status = Gtk::manage(new Gtk::CellRendererText());
   col_status->pack_start(*rend_status);
@@ -320,6 +324,7 @@ void MainWindow::populate_list(const std::vector<QueryInfo>& queries)
   for (int i = 0; i < static_cast<int>(queries.size()); ++i)
   {
     auto row = *list_store_->append();
+    row[columns_.col_number]  = i + 1;
     row[columns_.col_index]   = i;
     row[columns_.col_status]  = "PENDING";
     row[columns_.col_time]    = Glib::ustring(queries[i].time_utc);

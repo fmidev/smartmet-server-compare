@@ -4,6 +4,7 @@
 #include <gtkmm/entry.h>
 #include <gtkmm/filechooserdialog.h>
 #include <gtkmm/messagedialog.h>
+#include <gtkmm/settings.h>
 #include <gtkmm/treepath.h>
 
 // ---------------------------------------------------------------------------
@@ -12,6 +13,17 @@
 
 MainWindow::MainWindow()
 {
+  auto settings = Gtk::Settings::get_default();
+  if (settings)
+  {
+    // Force Adwaita theme which contains the appropriate CSS definitions and
+    // SVG symbolic icons. Over SSH/bare window managers on Rocky 8, GTK 3.22
+    // often falls back to a legacy engine where SpinButton/ComboBox element
+    // icons (+/- and down arrows) fail to render.
+    settings->property_gtk_theme_name() = "Adwaita";
+    settings->property_gtk_icon_theme_name() = "Adwaita";
+  }
+
   set_title("SmartMet Server Compare");
   set_default_size(1200, 800);
 

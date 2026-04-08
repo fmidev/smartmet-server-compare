@@ -31,6 +31,7 @@ Requires: smartmet-library-spine
 Requires: smartmet-library-macgyver
 Requires: tinyxml2
 Requires: jsoncpp
+Requires: adwaita-icon-theme
 
 %description
 SmartMet Server Comparison Tool for finding differences in responses between configured servers.

@@ -3,7 +3,7 @@
 
 Name: %{SPECNAME}
 Version: 26.4.8
-Release: 1%{?dist}.fmi
+Release: 2%{?dist}.fmi
 Summary: SmartMet Server comparison tool
 License: MIT
 URL: https://github.com/fmidev/smartmet-server-compare
@@ -53,3 +53,7 @@ rm -rf $RPM_BUILD_ROOT
 %files
 %defattr(-,root,root,-)
 %{_bindir}/smartmet-server-compare
+
+%changelog
+* Wed Apr  8 2026 Andris Pavenis <andris.pavenis@fmi.fi> - 26.4.8-2
+- Initial version

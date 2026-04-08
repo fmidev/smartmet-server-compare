@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <memory>
 #include <string>
 #include <string_view>
 

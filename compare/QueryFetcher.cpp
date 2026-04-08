@@ -90,8 +90,8 @@ std::pair<std::vector<QueryInfo>, std::string> QueryFetcher::fetch(const std::st
 
       QueryInfo qi;
       qi.request_string = std::move(rs);
-      qi.time_utc = item.isMember("TimeUTC") && item["TimeUTC"].isString() 
-                    ? item["TimeUTC"].asString() : "";
+      qi.time_utc = item.isMember("Time") && item["Time"].isString() 
+                    ? item["Time"].asString() : "";
       queries.push_back(std::move(qi));
     }
   }

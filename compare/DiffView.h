@@ -3,6 +3,7 @@
 #include <gtkmm/label.h>
 #include <gtkmm/scrolledwindow.h>
 #include <gtkmm/scrollbar.h>
+#include <gtkmm/separator.h>
 #include <gtkmm/textview.h>
 
 #include <string>
@@ -62,6 +63,8 @@ class DiffView : public Gtk::Box
   Gtk::Box h_box_{Gtk::ORIENTATION_HORIZONTAL, 0};
   Gtk::Box left_col_{Gtk::ORIENTATION_VERTICAL, 0};
   Gtk::Box right_col_{Gtk::ORIENTATION_VERTICAL, 0};
+
+  Gtk::Separator vseparator_{Gtk::ORIENTATION_VERTICAL};
 
   Gtk::Scrollbar hscrollbar_;
   Glib::RefPtr<Gtk::Adjustment> shared_hadj_;

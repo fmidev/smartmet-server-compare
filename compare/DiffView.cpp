@@ -115,6 +115,7 @@ DiffView::DiffView() : Gtk::Box(Gtk::ORIENTATION_VERTICAL, 0)
   init_column(right_col_, right_label_, right_scroll_, right_view_);
 
   h_box_.pack_start(left_col_, true, true, 0);
+  h_box_.pack_start(vseparator_, false, false, 0);
   h_box_.pack_start(right_col_, true, true, 0);
 
   // Use a common horizontal scrollbar for both text views

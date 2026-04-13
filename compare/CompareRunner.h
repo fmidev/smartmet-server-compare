@@ -43,6 +43,12 @@ class CompareRunner
   // Request early stop; blocks until the worker exits.
   void stop();
 
+  // Request early stop without waiting for the worker.  Safe to call from
+  // the GTK main thread — in-flight TcpMultiQuery requests cannot be
+  // interrupted, so they continue draining in the background and
+  // signal_done() fires when they have all finished.
+  void request_stop() { stop_requested_ = true; }
+
   bool is_running() const { return running_.load(); }
 
  private:

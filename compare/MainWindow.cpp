@@ -395,9 +395,14 @@ void MainWindow::on_compare_clicked()
 
 void MainWindow::on_stop_clicked()
 {
-  runner_.stop();
-  set_buttons_running(false);
-  set_status("Stopped.");
+  // Non-blocking: just set the flag.  In-flight TcpMultiQuery requests
+  // cannot be interrupted, so the worker keeps draining them in the
+  // background; on_compare_done() will fire when it has truly finished
+  // and re-enable the buttons.  Disable Stop right away so the user
+  // doesn't click it repeatedly.
+  runner_.request_stop();
+  btn_stop_.set_sensitive(false);
+  set_status("Stopping… (waiting for in-flight requests to finish)");
 }
 
 void MainWindow::on_compare_result(CompareResult result)

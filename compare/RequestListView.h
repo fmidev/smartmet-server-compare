@@ -2,6 +2,7 @@
 #include "Types.h"
 
 #include <gtkmm/liststore.h>
+#include <gtkmm/menu.h>
 #include <gtkmm/scrolledwindow.h>
 #include <gtkmm/treeview.h>
 
@@ -44,6 +45,8 @@ class RequestListView : public Gtk::ScrolledWindow
 
  private:
   void on_selection_changed_internal();
+  bool on_button_press(GdkEventButton* event);
+  void on_copy_request();
 
   struct Columns : public Gtk::TreeModel::ColumnRecord
   {
@@ -67,6 +70,7 @@ class RequestListView : public Gtk::ScrolledWindow
   Columns columns_;
   Glib::RefPtr<Gtk::ListStore> store_;
   Gtk::TreeView view_;
+  Gtk::Menu context_menu_;
 
   sigc::signal<void(int)> sig_selected_;
 };

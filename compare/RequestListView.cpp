@@ -1,6 +1,8 @@
 #include "RequestListView.h"
 
 #include <gtkmm/cellrenderertext.h>
+#include <gtkmm/clipboard.h>
+#include <gtkmm/menuitem.h>
 
 #include <cmath>
 #include <iomanip>
@@ -36,6 +38,16 @@ RequestListView::RequestListView()
 
   view_.get_selection()->signal_changed().connect(
       sigc::mem_fun(*this, &RequestListView::on_selection_changed_internal));
+
+  // Context menu
+  auto* item_copy = Gtk::manage(new Gtk::MenuItem("Copy request string"));
+  item_copy->signal_activate().connect(
+      sigc::mem_fun(*this, &RequestListView::on_copy_request));
+  context_menu_.append(*item_copy);
+  context_menu_.show_all();
+
+  view_.signal_button_press_event().connect(
+      sigc::mem_fun(*this, &RequestListView::on_button_press), false);
 
   add(view_);
   set_policy(Gtk::POLICY_AUTOMATIC, Gtk::POLICY_AUTOMATIC);
@@ -105,6 +117,34 @@ int RequestListView::selected_index()
 void RequestListView::on_selection_changed_internal()
 {
   sig_selected_.emit(selected_index());
+}
+
+bool RequestListView::on_button_press(GdkEventButton* event)
+{
+  if (event->type == GDK_BUTTON_PRESS && event->button == 3)
+  {
+    // Select the row under the cursor before showing the menu
+    Gtk::TreeModel::Path path;
+    if (view_.get_path_at_pos(static_cast<int>(event->x),
+                              static_cast<int>(event->y),
+                              path))
+    {
+      view_.get_selection()->select(path);
+    }
+    context_menu_.popup_at_pointer(reinterpret_cast<GdkEvent*>(event));
+    return true;
+  }
+  return false;
+}
+
+void RequestListView::on_copy_request()
+{
+  auto sel = view_.get_selection()->get_selected();
+  if (!sel)
+    return;
+
+  Glib::ustring text = (*sel)[columns_.col_request];
+  Gtk::Clipboard::get()->set_text(text);
 }
 
 /* static */

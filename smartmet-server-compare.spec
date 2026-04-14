@@ -13,7 +13,7 @@ BuildRoot: %{_tmppath}/%{name}-%{version}-%{release}-root-%(%{__id_u} -n)
 BuildRequires: rpm-build
 BuildRequires: gcc-c++
 BuildRequires: make
-BuildRequires: smartmet-library-spine-devel
+BuildRequires: smartmet-library-spine-devel >= 26.4.14
 BuildRequires: smartmet-library-macgyver-devel
 BuildRequires: tinyxml2-devel
 BuildRequires: jsoncpp-devel
@@ -27,7 +27,7 @@ BuildRequires: gtkmm30-devel
 Requires: gtkmm30
 %endif
 
-Requires: smartmet-library-spine
+Requires: smartmet-library-spine >= 26.4.14
 Requires: smartmet-library-macgyver
 Requires: tinyxml2
 Requires: jsoncpp

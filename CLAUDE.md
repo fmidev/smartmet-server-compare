@@ -43,7 +43,7 @@ All source lives in `compare/`:
 
 ## Conventions
 
-- C++23, compiled with g++-14.
+- C++23, compiled with g++-14 (compatibility with C++17 and gcc versions 8 and above is required)
 - No unit tests; verify changes by building and running the GUI.
 - Adwaita theme is force-set at startup for consistent rendering.
 - `Glib::Dispatcher` bridges background threads to the GTK main loop;

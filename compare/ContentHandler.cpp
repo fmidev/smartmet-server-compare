@@ -48,9 +48,8 @@ static ContentKind kind_from_header(const std::string& ct)
   if (has("json"))
     return ContentKind::JSON;
 
-  // SVG is XML
-  if (has("svg"))
-    return ContentKind::XML;
+  if (has("image/svg"))
+    return ContentKind::SVG;
 
   if (has("xml") || has("xhtml") || has("gml") || has("kml") || has("wfs") || has("wms"))
     return ContentKind::XML;
@@ -60,6 +59,9 @@ static ContentKind kind_from_header(const std::string& ct)
 
   if (ct.find("text/") == 0)
     return ContentKind::TEXT;
+
+  if (has("application/pdf") || has("application/x-pdf"))
+    return ContentKind::PDF;
 
   if (has("image/"))
     return ContentKind::IMAGE;
@@ -89,6 +91,10 @@ static ContentKind sniff_body(const std::string& body)
   if (body.size() >= 4 && body.substr(0, 4) == "GIF8")
     return ContentKind::IMAGE;
 
+  // PDF magic
+  if (body.size() >= 5 && body.substr(0, 5) == "%PDF-")
+    return ContentKind::PDF;
+
   const std::string_view front = trim_front(std::string_view(body));
   if (front.empty())
     return ContentKind::TEXT;
@@ -108,7 +114,12 @@ static ContentKind sniff_body(const std::string& body)
   }
 
   if (first == '<')
+  {
+    // Distinguish SVG from generic XML by looking for an <svg root element.
+    if (front.find("<svg") != std::string_view::npos)
+      return ContentKind::SVG;
     return ContentKind::XML;
+  }
 
   return looks_like_text(body) ? ContentKind::TEXT : ContentKind::BINARY;
 }
@@ -170,9 +181,11 @@ std::pair<std::string, std::string> format_for_diff(ContentKind kind, const std:
     }
 
     case ContentKind::IMAGE:
+    case ContentKind::SVG:
+    case ContentKind::PDF:
     case ContentKind::BINARY:
     case ContentKind::UNKNOWN:
-      // Caller should use byte-level comparison; no text to diff.
+      // Caller should use byte-level or image comparison; no text to diff.
       return {{}, {}};
   }
   return {{}, {}};
@@ -187,6 +200,8 @@ const char* content_kind_label(ContentKind kind)
     case ContentKind::UNKNOWN: return "unknown";
     case ContentKind::BINARY:  return "binary";
     case ContentKind::IMAGE:   return "image";
+    case ContentKind::SVG:     return "SVG";
+    case ContentKind::PDF:     return "PDF";
     case ContentKind::TEXT:    return "text";
     case ContentKind::JSON:    return "JSON";
     case ContentKind::XML:     return "XML";

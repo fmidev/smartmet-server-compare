@@ -6,11 +6,15 @@ SPEC = smartmet-server-compare
 GTKMM_CLAGS = $(shell pkg-config --cflags gtkmm-3.0)
 GTKMM_LDFLAGS = $(shell pkg-config --libs gtkmm-3.0)
 
+MAGICK_CFLAGS = $(shell pkg-config --cflags Magick++)
+MAGICK_LDFLAGS = $(shell pkg-config --libs Magick++)
+
 LIBS += \
 	$(PREFIX_LDFLAGS) \
 	-lsmartmet-spine \
 	-lsmartmet-macgyver \
 	$(GTKMM_LDFLAGS) \
+	$(MAGICK_LDFLAGS) \
 	-ltinyxml2 \
 	-ljsoncpp \
 	$(REQUIRED_LIBS) \
@@ -19,6 +23,7 @@ LIBS += \
 CFLAGS += \
 	$(PREFIX_CFLAGS) \
 	$(GTKMM_CLAGS) \
+	$(MAGICK_CFLAGS) \
 	$(REQUIRED_CFLAGS) \
 	-I. -I.. -I../..
 

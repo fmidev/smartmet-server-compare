@@ -20,7 +20,8 @@ under `compare/` are picked up automatically by the Makefile wildcard.
 ### Dependencies
 
 Build: `smartmet-library-spine-devel`, `smartmet-library-macgyver-devel`,
-`gtkmm30-devel`, `tinyxml2-devel`, `jsoncpp-devel`, `gcc-c++`, `make`.
+`gtkmm30-devel`, `ImageMagick-c++-devel`, `tinyxml2-devel`, `jsoncpp-devel`,
+`gcc-c++`, `make`.
 
 Runtime: the matching `-libs` packages plus `adwaita-icon-theme`.
 
@@ -32,12 +33,15 @@ All source lives in `compare/`:
 - **Orchestration**: `MainWindow` composes the panels and wires
   `QueryFetcher` / `CompareRunner` to the UI.
 - **UI panels**: `InputBar`, `RequestListView`, `ResultPanel`, `StatusPanel`.
-- **Result viewers**: `ResultViewer` (abstract), `TextDiffViewer` (catch-all
-  text/binary viewer wrapping `DiffView`).  Register new viewers in
-  `ResultPanel` (most-specific first) via `add_viewer()`.
+- **Result viewers**: `ResultViewer` (abstract), `ImageDiffViewer` (image
+  comparison with animation/diff modes, PSNR via Magick++),
+  `TextDiffViewer` (catch-all text/binary viewer wrapping `DiffView`).
+  Register new viewers in `ResultPanel` (most-specific first) via
+  `add_viewer()`.
 - **Background workers**: `CompareRunner` (multi-threaded comparison),
   `QueryFetcher` (async log fetch).
 - **Helpers**: `ContentHandler` (content-type detection + formatting),
+  `ImageCompare` (PSNR + diff image via Magick++),
   `UrlUtils`, `Settings` (JSON persistence in
   `~/.local/share/smartmet-server-compare/history.json`), `Types.h`.
 

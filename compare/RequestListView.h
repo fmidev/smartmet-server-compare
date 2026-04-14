@@ -52,12 +52,14 @@ class RequestListView : public Gtk::ScrolledWindow
       add(col_number);
       add(col_index);
       add(col_status);
+      add(col_psnr);
       add(col_time);
       add(col_request);
     }
     Gtk::TreeModelColumn<int> col_number;
     Gtk::TreeModelColumn<int> col_index;
     Gtk::TreeModelColumn<Glib::ustring> col_status;
+    Gtk::TreeModelColumn<Glib::ustring> col_psnr;
     Gtk::TreeModelColumn<Glib::ustring> col_time;
     Gtk::TreeModelColumn<Glib::ustring> col_request;
   };

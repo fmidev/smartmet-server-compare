@@ -18,6 +18,7 @@ BuildRequires: smartmet-library-macgyver-devel
 BuildRequires: tinyxml2-devel
 BuildRequires: jsoncpp-devel
 BuildRequires: pkgconf-pkg-config
+BuildRequires: ImageMagick-c++-devel
 
 %if 0%{?rhel} >= 10
 BuildRequires: gtkmm3.0-devel
@@ -31,6 +32,7 @@ Requires: smartmet-library-spine >= 26.4.14
 Requires: smartmet-library-macgyver
 Requires: tinyxml2
 Requires: jsoncpp
+Requires: ImageMagick-c++
 Requires: adwaita-icon-theme
 
 %description

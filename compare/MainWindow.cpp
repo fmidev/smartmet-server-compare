@@ -1,5 +1,6 @@
 #include "MainWindow.h"
 
+#include "ImageDiffViewer.h"
 #include "TextDiffViewer.h"
 
 #include <gtkmm/filechooserdialog.h>
@@ -29,8 +30,8 @@ MainWindow::MainWindow()
   set_default_size(1200, 800);
 
   // Result viewers, registered most-specific first.  TextDiffViewer is the
-  // catch-all and goes last so future content-specific viewers (image, …)
-  // can claim their results before falling through.
+  // catch-all and goes last.
+  result_panel_.add_viewer(std::make_unique<ImageDiffViewer>());
   result_panel_.add_viewer(std::make_unique<TextDiffViewer>());
 
   vpaned_.pack1(list_view_, false, true);

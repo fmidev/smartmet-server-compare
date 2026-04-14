@@ -1,5 +1,6 @@
 #include "CompareRunner.h"
 #include "ContentHandler.h"
+#include "ImageCompare.h"
 #include "UrlUtils.h"
 
 #include <smartmet/spine/HTTP.h>
@@ -221,21 +222,37 @@ void CompareRunner::worker(std::vector<QueryInfo> queries,
           result.kind1 = detect_content_kind(result.content_type1, result.body1);
           result.kind2 = detect_content_kind(result.content_type2, result.body2);
 
-          auto [fmt1, ferr1] = format_for_diff(result.kind1, result.body1);
-          auto [fmt2, ferr2] = format_for_diff(result.kind2, result.body2);
-          result.formatted1 = std::move(fmt1);
-          result.formatted2 = std::move(fmt2);
+          if (is_image_kind(result.kind1) && is_image_kind(result.kind2))
+          {
+            // Image path: compare by PSNR via Magick++.
+            try
+            {
+              result.psnr = compute_psnr(result.body1, result.body2);
+              result.status = std::isinf(result.psnr) ? CompareStatus::EQUAL
+                                                      : CompareStatus::DIFFERENT;
+            }
+            catch (const std::exception& e)
+            {
+              result.error1 = e.what();
+              result.status = CompareStatus::ERROR;
+            }
+          }
+          else
+          {
+            // Text / binary path: format for diff.
+            auto [fmt1, ferr1] = format_for_diff(result.kind1, result.body1);
+            auto [fmt2, ferr2] = format_for_diff(result.kind2, result.body2);
+            result.formatted1 = std::move(fmt1);
+            result.formatted2 = std::move(fmt2);
 
-          // Append any formatting errors to the network-error fields so they
-          // surface in the UI without hiding the actual content.
-          if (!ferr1.empty()) result.error1 = ferr1;
-          if (!ferr2.empty()) result.error2 = ferr2;
+            if (!ferr1.empty()) result.error1 = ferr1;
+            if (!ferr2.empty()) result.error2 = ferr2;
 
-          // Compare the normalised form; fall back to raw bytes for binary.
-          const bool use_text = !result.formatted1.empty() || !result.formatted2.empty();
-          const bool equal = use_text ? (result.formatted1 == result.formatted2)
-                                      : (result.body1 == result.body2);
-          result.status = equal ? CompareStatus::EQUAL : CompareStatus::DIFFERENT;
+            const bool use_text = !result.formatted1.empty() || !result.formatted2.empty();
+            const bool equal = use_text ? (result.formatted1 == result.formatted2)
+                                        : (result.body1 == result.body2);
+            result.status = equal ? CompareStatus::EQUAL : CompareStatus::DIFFERENT;
+          }
         }
       }
 

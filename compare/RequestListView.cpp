@@ -2,6 +2,10 @@
 
 #include <gtkmm/cellrenderertext.h>
 
+#include <cmath>
+#include <iomanip>
+#include <sstream>
+
 RequestListView::RequestListView()
 {
   store_ = Gtk::ListStore::create(columns_);
@@ -17,6 +21,10 @@ RequestListView::RequestListView()
   col_status->add_attribute(rend_status->property_text(), columns_.col_status);
   col_status->set_min_width(80);
   view_.append_column(*col_status);
+
+  auto* col_psnr = Gtk::manage(new Gtk::TreeViewColumn("PSNR (dB)", columns_.col_psnr));
+  col_psnr->set_min_width(80);
+  view_.append_column(*col_psnr);
 
   auto* col_time = Gtk::manage(new Gtk::TreeViewColumn("Time (UTC)", columns_.col_time));
   col_time->set_min_width(140);
@@ -51,7 +59,21 @@ void RequestListView::populate(const std::vector<QueryInfo>& queries)
 void RequestListView::reset_to_pending()
 {
   for (auto& row : store_->children())
+  {
     row[columns_.col_status] = "PENDING";
+    row[columns_.col_psnr]   = "";
+  }
+}
+
+static Glib::ustring format_psnr(double psnr)
+{
+  if (std::isnan(psnr))
+    return "";
+  if (std::isinf(psnr))
+    return "∞";
+  std::ostringstream oss;
+  oss << std::fixed << std::setprecision(1) << psnr;
+  return oss.str();
 }
 
 void RequestListView::update_status(const CompareResult& result)
@@ -61,6 +83,7 @@ void RequestListView::update_status(const CompareResult& result)
     if (row[columns_.col_index] == result.index)
     {
       row[columns_.col_status] = status_text(result.status);
+      row[columns_.col_psnr]   = format_psnr(result.psnr);
       return;
     }
   }

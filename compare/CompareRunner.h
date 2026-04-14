@@ -5,9 +5,12 @@
 #include <deque>
 #include <functional>
 #include <mutex>
+#include <set>
 #include <string>
 #include <thread>
 #include <vector>
+
+namespace SmartMet::Spine { class TcpMultiQuery; }
 
 #include <glibmm/dispatcher.h>
 
@@ -44,10 +47,9 @@ class CompareRunner
   void stop();
 
   // Request early stop without waiting for the worker.  Safe to call from
-  // the GTK main thread — in-flight TcpMultiQuery requests cannot be
-  // interrupted, so they continue draining in the background and
-  // signal_done() fires when they have all finished.
-  void request_stop() { stop_requested_ = true; }
+  // the GTK main thread.  Interrupts in-flight TcpMultiQuery requests via
+  // their stop() method so they return immediately.
+  void request_stop();
 
   bool is_running() const { return running_.load(); }
 
@@ -70,6 +72,10 @@ class CompareRunner
   std::mutex mutex_;
   std::deque<CompareResult> result_queue_;
   bool done_pending_{false};
+
+  // Live TcpMultiQuery objects that request_stop() should interrupt.
+  std::mutex active_queries_mutex_;
+  std::set<SmartMet::Spine::TcpMultiQuery*> active_queries_;
 
   // Signals emitted on the main thread
   sigc::signal<void(CompareResult)> sig_result_;

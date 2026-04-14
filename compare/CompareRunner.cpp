@@ -94,9 +94,17 @@ void CompareRunner::start(std::vector<QueryInfo> queries,
                         max_size);
 }
 
-void CompareRunner::stop()
+void CompareRunner::request_stop()
 {
   stop_requested_ = true;
+  std::lock_guard<std::mutex> lock(active_queries_mutex_);
+  for (auto* mq : active_queries_)
+    mq->stop();
+}
+
+void CompareRunner::stop()
+{
+  request_stop();
   if (thread_.joinable())
     thread_.join();
   running_ = false;
@@ -173,7 +181,16 @@ void CompareRunner::worker(std::vector<QueryInfo> queries,
         SmartMet::Spine::TcpMultiQuery mq(60);
         mq.add_query("s1", addr1->host, addr1->port, req1);
         mq.add_query("s2", addr2->host, addr2->port, req2);
+
+        {
+          std::lock_guard<std::mutex> lock(active_queries_mutex_);
+          active_queries_.insert(&mq);
+        }
         mq.execute();
+        {
+          std::lock_guard<std::mutex> lock(active_queries_mutex_);
+          active_queries_.erase(&mq);
+        }
 
         auto info1 = parse_raw_response(mq["s1"]);
         auto info2 = parse_raw_response(mq["s2"]);

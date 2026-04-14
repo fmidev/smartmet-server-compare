@@ -213,12 +213,9 @@ void MainWindow::on_compare_requested()
 
 void MainWindow::on_stop_requested()
 {
-  // Non-blocking: just set the flag.  In-flight TcpMultiQuery requests
-  // cannot be interrupted, so the worker keeps draining them in the
-  // background; on_compare_done() will fire when it has truly finished.
   runner_.request_stop();
   input_bar_.notify_stopping();
-  status_panel_.set_status("Stopping… (waiting for in-flight requests to finish)");
+  status_panel_.set_status("Stopping…");
 }
 
 void MainWindow::on_compare_result(CompareResult result)

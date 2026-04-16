@@ -56,7 +56,8 @@ class RequestListView : public Gtk::Box
  private:
   void on_selection_changed_internal();
   bool on_button_press(GdkEventButton* event);
-  void on_copy_request();
+  void on_copy_decoded();
+  void on_copy_encoded();
   void on_filter_changed();
   bool filter_func(const Gtk::TreeModel::const_iterator& iter);
 
@@ -70,7 +71,8 @@ class RequestListView : public Gtk::Box
       add(col_psnr);
       add(col_time);
       add(col_request);
-      // Hidden columns for filtering
+      // Hidden columns
+      add(col_request_raw);
       add(col_raw_status);
       add(col_is_image);
       add(col_psnr_val);
@@ -82,6 +84,7 @@ class RequestListView : public Gtk::Box
     Gtk::TreeModelColumn<Glib::ustring> col_time;
     Gtk::TreeModelColumn<Glib::ustring> col_request;
     // Hidden
+    Gtk::TreeModelColumn<Glib::ustring> col_request_raw;  // original URL-encoded
     Gtk::TreeModelColumn<int>    col_raw_status;  // CompareStatus as int
     Gtk::TreeModelColumn<bool>   col_is_image;
     Gtk::TreeModelColumn<double> col_psnr_val;

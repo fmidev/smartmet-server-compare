@@ -1,5 +1,7 @@
 #include "RequestListView.h"
 
+#include <smartmet/spine/HTTP.h>
+
 #include <gtkmm/cellrenderertext.h>
 #include <gtkmm/clipboard.h>
 #include <gtkmm/menuitem.h>
@@ -84,10 +86,16 @@ RequestListView::RequestListView()
       sigc::mem_fun(*this, &RequestListView::on_selection_changed_internal));
 
   // ---- Context menu ----
-  auto* item_copy = Gtk::manage(new Gtk::MenuItem("Copy request string"));
-  item_copy->signal_activate().connect(
-      sigc::mem_fun(*this, &RequestListView::on_copy_request));
-  context_menu_.append(*item_copy);
+  auto* item_copy_dec = Gtk::manage(new Gtk::MenuItem("Copy request (decoded)"));
+  item_copy_dec->signal_activate().connect(
+      sigc::mem_fun(*this, &RequestListView::on_copy_decoded));
+  context_menu_.append(*item_copy_dec);
+
+  auto* item_copy_enc = Gtk::manage(new Gtk::MenuItem("Copy request (original)"));
+  item_copy_enc->signal_activate().connect(
+      sigc::mem_fun(*this, &RequestListView::on_copy_encoded));
+  context_menu_.append(*item_copy_enc);
+
   context_menu_.show_all();
 
   view_.signal_button_press_event().connect(
@@ -115,8 +123,10 @@ void RequestListView::populate(const std::vector<QueryInfo>& queries)
     row[columns_.col_index]      = i;
     row[columns_.col_status]     = "PENDING";
     row[columns_.col_time]       = Glib::ustring(queries[i].time_utc);
-    row[columns_.col_request]    = Glib::ustring(queries[i].request_string);
-    row[columns_.col_raw_status] = static_cast<int>(CompareStatus::PENDING);
+    row[columns_.col_request]     = Glib::ustring(
+        SmartMet::Spine::HTTP::urldecode(queries[i].request_string));
+    row[columns_.col_request_raw] = Glib::ustring(queries[i].request_string);
+    row[columns_.col_raw_status]  = static_cast<int>(CompareStatus::PENDING);
     row[columns_.col_is_image]   = false;
     row[columns_.col_psnr_val]   = std::numeric_limits<double>::quiet_NaN();
   }
@@ -263,13 +273,21 @@ bool RequestListView::on_button_press(GdkEventButton* event)
   return false;
 }
 
-void RequestListView::on_copy_request()
+void RequestListView::on_copy_decoded()
 {
   auto sel = view_.get_selection()->get_selected();
   if (!sel)
     return;
-
   Glib::ustring text = (*sel)[columns_.col_request];
+  Gtk::Clipboard::get()->set_text(text);
+}
+
+void RequestListView::on_copy_encoded()
+{
+  auto sel = view_.get_selection()->get_selected();
+  if (!sel)
+    return;
+  Glib::ustring text = (*sel)[columns_.col_request_raw];
   Gtk::Clipboard::get()->set_text(text);
 }
 

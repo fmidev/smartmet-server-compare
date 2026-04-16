@@ -1,9 +1,14 @@
 #pragma once
 #include "Types.h"
 
+#include <gtkmm/box.h>
+#include <gtkmm/comboboxtext.h>
+#include <gtkmm/label.h>
 #include <gtkmm/liststore.h>
 #include <gtkmm/menu.h>
 #include <gtkmm/scrolledwindow.h>
+#include <gtkmm/spinbutton.h>
+#include <gtkmm/treemodelfilter.h>
 #include <gtkmm/treeview.h>
 
 #include <sigc++/sigc++.h>
@@ -11,13 +16,18 @@
 #include <vector>
 
 /**
- * The top pane: a scrollable TreeView listing every request and its current
- * status.  Owns the ListStore and column model.
+ * The top pane: a filter bar plus a scrollable TreeView listing every request
+ * and its current status.  Owns the ListStore, a TreeModelFilter, and the
+ * column model.
+ *
+ * Two independent filter axes:
+ *   Content type : All | Text | Image  (+ optional PSNR threshold for Image)
+ *   Status       : All | Equal | Different | Error
  *
  * Emits signal_index_selected(int) whenever the selection changes.  The
  * argument is the original query index (-1 when nothing is selected).
  */
-class RequestListView : public Gtk::ScrolledWindow
+class RequestListView : public Gtk::Box
 {
  public:
   RequestListView();
@@ -47,6 +57,8 @@ class RequestListView : public Gtk::ScrolledWindow
   void on_selection_changed_internal();
   bool on_button_press(GdkEventButton* event);
   void on_copy_request();
+  void on_filter_changed();
+  bool filter_func(const Gtk::TreeModel::const_iterator& iter);
 
   struct Columns : public Gtk::TreeModel::ColumnRecord
   {
@@ -58,6 +70,10 @@ class RequestListView : public Gtk::ScrolledWindow
       add(col_psnr);
       add(col_time);
       add(col_request);
+      // Hidden columns for filtering
+      add(col_raw_status);
+      add(col_is_image);
+      add(col_psnr_val);
     }
     Gtk::TreeModelColumn<int> col_number;
     Gtk::TreeModelColumn<int> col_index;
@@ -65,12 +81,28 @@ class RequestListView : public Gtk::ScrolledWindow
     Gtk::TreeModelColumn<Glib::ustring> col_psnr;
     Gtk::TreeModelColumn<Glib::ustring> col_time;
     Gtk::TreeModelColumn<Glib::ustring> col_request;
+    // Hidden
+    Gtk::TreeModelColumn<int>    col_raw_status;  // CompareStatus as int
+    Gtk::TreeModelColumn<bool>   col_is_image;
+    Gtk::TreeModelColumn<double> col_psnr_val;
   };
 
   Columns columns_;
   Glib::RefPtr<Gtk::ListStore> store_;
+  Glib::RefPtr<Gtk::TreeModelFilter> filter_;
   Gtk::TreeView view_;
   Gtk::Menu context_menu_;
+
+  // Filter bar
+  Gtk::Box filter_bar_{Gtk::ORIENTATION_HORIZONTAL, 6};
+  Gtk::Label lbl_content_{"Content:"};
+  Gtk::ComboBoxText cb_content_;
+  Gtk::Label lbl_status_{"Status:"};
+  Gtk::ComboBoxText cb_status_;
+  Gtk::Label lbl_psnr_{"Max PSNR (dB):"};
+  Gtk::SpinButton spin_psnr_;
+
+  Gtk::ScrolledWindow scroll_;
 
   sigc::signal<void(int)> sig_selected_;
 };

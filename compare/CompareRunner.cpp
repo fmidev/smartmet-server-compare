@@ -222,9 +222,12 @@ void CompareRunner::worker(std::vector<QueryInfo> queries,
           result.kind1 = detect_content_kind(result.content_type1, result.body1);
           result.kind2 = detect_content_kind(result.content_type2, result.body2);
 
-          if (is_image_kind(result.kind1) && is_image_kind(result.kind2))
+          const bool img1 = is_image_kind(result.kind1);
+          const bool img2 = is_image_kind(result.kind2);
+
+          if (img1 && img2)
           {
-            // Image path: compare by PSNR via Magick++.
+            // Both images: compare by PSNR via Magick++.
             try
             {
               result.psnr = compute_psnr(result.body1, result.body2);
@@ -236,6 +239,23 @@ void CompareRunner::worker(std::vector<QueryInfo> queries,
               result.error1 = e.what();
               result.status = CompareStatus::ERROR;
             }
+          }
+          else if (img1 != img2)
+          {
+            // Content type mismatch: one server returned an image, the
+            // other returned text (typically an error page).  Format the
+            // text side for display; leave the image side as-is so the
+            // viewer can render it.
+            const auto& text_kind = img1 ? result.kind2 : result.kind1;
+            const auto& text_body = img1 ? result.body2 : result.body1;
+
+            auto [fmt, ferr] = format_for_diff(text_kind, text_body);
+            auto& fmt_slot = img1 ? result.formatted2 : result.formatted1;
+            auto& err_slot = img1 ? result.error2 : result.error1;
+            fmt_slot = fmt.empty() ? text_body : std::move(fmt);
+            if (!ferr.empty()) err_slot = ferr;
+
+            result.status = CompareStatus::ERROR;
           }
           else
           {

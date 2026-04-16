@@ -8,6 +8,8 @@
 #include <gtkmm/label.h>
 #include <gtkmm/radiobutton.h>
 #include <gtkmm/scrolledwindow.h>
+#include <gtkmm/stack.h>
+#include <gtkmm/textview.h>
 
 #include <string>
 
@@ -43,8 +45,10 @@ class ImageDiffViewer : public ResultViewer
 
   void set_mode(Mode m);
   void show_pixbuf(const Glib::RefPtr<Gdk::Pixbuf>& pb);
+  void show_text(const std::string& text);
   bool on_animation_tick();
   void on_export_clicked();
+  bool is_mixed() const;
 
   static Glib::RefPtr<Gdk::Pixbuf> pixbuf_from_blob(const std::string& blob);
 
@@ -61,7 +65,9 @@ class ImageDiffViewer : public ResultViewer
   Gtk::Label info_label_;
 
   Gtk::ScrolledWindow scroll_;
+  Gtk::Stack content_stack_;
   Gtk::Image image_;
+  Gtk::TextView text_view_;
 
   // State
   Mode mode_{Mode::ANIMATE};
@@ -76,4 +82,8 @@ class ImageDiffViewer : public ResultViewer
   // Keep raw blobs for lazy diff computation
   std::string blob1_;
   std::string blob2_;
+
+  // For mixed content (one side image, other text): the formatted text body
+  std::string text1_;   // non-empty when side 1 is text
+  std::string text2_;   // non-empty when side 2 is text
 };

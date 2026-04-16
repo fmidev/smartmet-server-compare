@@ -1,4 +1,5 @@
 #include "ImageDiffViewer.h"
+#include "ContentHandler.h"
 #include "ImageCompare.h"
 
 #include <giomm/memoryinputstream.h>
@@ -38,8 +39,16 @@ ImageDiffViewer::ImageDiffViewer()
   toolbar_.pack_start(btn_export_, false, false, 8);
   toolbar_.pack_start(info_label_, false, false, 16);
 
+  text_view_.set_editable(false);
+  text_view_.set_wrap_mode(Gtk::WRAP_WORD_CHAR);
+  text_view_.set_monospace(true);
+
+  content_stack_.add(image_, "image");
+  content_stack_.add(text_view_, "text");
+  content_stack_.set_transition_type(Gtk::STACK_TRANSITION_TYPE_NONE);
+
   scroll_.set_policy(Gtk::POLICY_AUTOMATIC, Gtk::POLICY_AUTOMATIC);
-  scroll_.add(image_);
+  scroll_.add(content_stack_);
 
   outer_box_.pack_start(toolbar_, false, false);
   outer_box_.pack_start(scroll_, true, true);
@@ -57,42 +66,76 @@ ImageDiffViewer::~ImageDiffViewer()
 
 bool ImageDiffViewer::can_handle(const CompareResult& result) const
 {
-  return is_image_kind(result.kind1) && is_image_kind(result.kind2);
+  // Handle when at least one side is an image
+  return is_image_kind(result.kind1) || is_image_kind(result.kind2);
 }
 
 void ImageDiffViewer::show(const CompareResult& result,
                            const std::string& label1,
                            const std::string& label2)
 {
-  // Cache raw blobs for lazy diff computation
   blob1_ = result.body1;
   blob2_ = result.body2;
+  text1_.clear();
+  text2_.clear();
 
-  // Load pixbufs
-  pb1_ = pixbuf_from_blob(blob1_);
-  pb2_ = pixbuf_from_blob(blob2_);
-  pb_diff_.reset();  // computed lazily
+  const bool img1 = is_image_kind(result.kind1);
+  const bool img2 = is_image_kind(result.kind2);
+
+  // Load pixbufs only for image sides
+  pb1_ = img1 ? pixbuf_from_blob(blob1_) : Glib::RefPtr<Gdk::Pixbuf>();
+  pb2_ = img2 ? pixbuf_from_blob(blob2_) : Glib::RefPtr<Gdk::Pixbuf>();
+  pb_diff_.reset();
+
+  // For mixed content, store the formatted text for the text side
+  if (!img1)
+    text1_ = result.formatted1.empty() ? result.body1 : result.formatted1;
+  if (!img2)
+    text2_ = result.formatted2.empty() ? result.body2 : result.formatted2;
 
   // Info label
   std::ostringstream oss;
-  if (!std::isnan(result.psnr))
+  if (is_mixed())
   {
-    oss << "PSNR: ";
-    if (std::isinf(result.psnr))
-      oss << "∞ (identical)";
-    else
-      oss << std::fixed << std::setprecision(1) << result.psnr << " dB";
+    oss << "Content mismatch: "
+        << label1 << " → " << content_kind_label(result.kind1) << "    "
+        << label2 << " → " << content_kind_label(result.kind2);
   }
-  if (pb1_ && pb2_)
+  else
   {
-    oss << "    " << label1 << ": " << pb1_->get_width() << "×" << pb1_->get_height()
-        << "    " << label2 << ": " << pb2_->get_width() << "×" << pb2_->get_height();
+    if (!std::isnan(result.psnr))
+    {
+      oss << "PSNR: ";
+      if (std::isinf(result.psnr))
+        oss << "∞ (identical)";
+      else
+        oss << std::fixed << std::setprecision(1) << result.psnr << " dB";
+    }
+    if (pb1_ && pb2_)
+    {
+      oss << "    " << label1 << ": " << pb1_->get_width() << "×" << pb1_->get_height()
+          << "    " << label2 << ": " << pb2_->get_width() << "×" << pb2_->get_height();
+    }
   }
   info_label_.set_text(oss.str());
 
-  // Start in Animate mode
-  rb_animate_.set_active(true);
-  set_mode(Mode::ANIMATE);
+  // Disable modes that don't apply to mixed content
+  const bool mixed = is_mixed();
+  rb_animate_.set_sensitive(!mixed);
+  rb_diff_.set_sensitive(!mixed);
+  btn_export_.set_sensitive(!mixed);
+
+  // Default to Image 1 for mixed, Animate for normal
+  if (mixed)
+  {
+    rb_img1_.set_active(true);
+    set_mode(Mode::IMAGE1);
+  }
+  else
+  {
+    rb_animate_.set_active(true);
+    set_mode(Mode::ANIMATE);
+  }
 }
 
 void ImageDiffViewer::clear()
@@ -103,13 +146,22 @@ void ImageDiffViewer::clear()
   pb_diff_.reset();
   blob1_.clear();
   blob2_.clear();
+  text1_.clear();
+  text2_.clear();
   image_.clear();
+  text_view_.get_buffer()->set_text("");
   info_label_.set_text("");
 }
 
 // ---------------------------------------------------------------------------
 // Mode switching
 // ---------------------------------------------------------------------------
+
+bool ImageDiffViewer::is_mixed() const
+{
+  // Mixed = one side has a pixbuf (image) and the other has text
+  return (!text1_.empty() || !text2_.empty());
+}
 
 void ImageDiffViewer::set_mode(Mode m)
 {
@@ -126,11 +178,17 @@ void ImageDiffViewer::set_mode(Mode m)
       break;
 
     case Mode::IMAGE1:
-      show_pixbuf(pb1_);
+      if (!text1_.empty())
+        show_text(text1_);
+      else
+        show_pixbuf(pb1_);
       break;
 
     case Mode::IMAGE2:
-      show_pixbuf(pb2_);
+      if (!text2_.empty())
+        show_text(text2_);
+      else
+        show_pixbuf(pb2_);
       break;
 
     case Mode::DIFFERENCE:
@@ -157,13 +215,20 @@ void ImageDiffViewer::show_pixbuf(const Glib::RefPtr<Gdk::Pixbuf>& pb)
     image_.set(pb);
   else
     image_.clear();
+  content_stack_.set_visible_child("image");
+}
+
+void ImageDiffViewer::show_text(const std::string& text)
+{
+  text_view_.get_buffer()->set_text(text);
+  content_stack_.set_visible_child("text");
 }
 
 bool ImageDiffViewer::on_animation_tick()
 {
   animation_showing_first_ = !animation_showing_first_;
   show_pixbuf(animation_showing_first_ ? pb1_ : pb2_);
-  return true;  // keep the timer running
+  return true;
 }
 
 // ---------------------------------------------------------------------------
@@ -175,7 +240,6 @@ void ImageDiffViewer::on_export_clicked()
   if (blob1_.empty() || blob2_.empty())
     return;
 
-  // Find the toplevel window for the dialog parent
   auto* toplevel = outer_box_.get_toplevel();
   auto* parent_win = dynamic_cast<Gtk::Window*>(toplevel);
 

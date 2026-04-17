@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include <string>
 
 // ---------------------------------------------------------------------------
@@ -168,16 +169,24 @@ void CompareRunner::worker(std::vector<QueryInfo> queries,
 
         if (img1 && img2)
         {
-          try
+          if (result.body1 == result.body2)
           {
-            result.psnr = compute_psnr(result.body1, result.body2);
-            result.status = std::isinf(result.psnr) ? CompareStatus::EQUAL
-                                                    : CompareStatus::DIFFERENT;
+            // Byte-identical — skip expensive Magick++ decoding.
+            result.psnr = std::numeric_limits<double>::infinity();
+            result.status = CompareStatus::EQUAL;
           }
-          catch (const std::exception& e)
+          else
           {
-            result.error1 = e.what();
-            result.status = CompareStatus::ERROR;
+            try
+            {
+              result.psnr = compute_psnr(result.body1, result.body2);
+              result.status = CompareStatus::DIFFERENT;
+            }
+            catch (const std::exception& e)
+            {
+              result.error1 = e.what();
+              result.status = CompareStatus::ERROR;
+            }
           }
         }
         else if (img1 != img2)

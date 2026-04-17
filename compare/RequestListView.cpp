@@ -103,6 +103,7 @@ RequestListView::RequestListView()
   // ---- Layout ----
   scroll_.add(view_);
   scroll_.set_policy(Gtk::POLICY_AUTOMATIC, Gtk::POLICY_AUTOMATIC);
+  scroll_.set_overlay_scrolling(false);
 
   pack_start(filter_bar_, false, false);
   pack_start(scroll_, true, true);

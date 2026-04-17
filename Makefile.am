@@ -14,6 +14,29 @@ smartmet_server_compare_LDADD = \
 	-ltinyxml2 \
 	-ljsoncpp
 
+SPEC = smartmet-server-compare.spec
+
+EXTRA_DIST = $(SPEC) autogen.sh m4/ax_cxx_compile_stdcxx.m4
+
+# Source tarball suitable for rpmbuild (name without version, as the spec expects)
+RPM_TARBALL = smartmet-server-compare.tar.gz
+
+$(RPM_TARBALL):
+	tar -czf $@ --exclude-vcs \
+		--transform 's,^,smartmet-server-compare/,' \
+		compare/ m4/ $(SPEC) configure.ac Makefile.am autogen.sh \
+		CLAUDE.md LICENSE README.md
+
+.PHONY: rpm srpm
+
+rpm: $(RPM_TARBALL)
+	rpmbuild -tb $<
+	rm -f $<
+
+srpm: $(RPM_TARBALL)
+	rpmbuild -ts $<
+	rm -f $<
+
 smartmet_server_compare_SOURCES = \
 	compare/main.cpp \
 	compare/CompareRunner.cpp \

@@ -1,6 +1,5 @@
 #include "RequestListView.h"
-
-#include <smartmet/spine/HTTP.h>
+#include "UrlUtils.h"
 
 #include <gtkmm/cellrenderertext.h>
 #include <gtkmm/clipboard.h>
@@ -124,7 +123,7 @@ void RequestListView::populate(const std::vector<QueryInfo>& queries)
     row[columns_.col_status]     = "PENDING";
     row[columns_.col_time]       = Glib::ustring(queries[i].time_utc);
     row[columns_.col_request]     = Glib::ustring(
-        SmartMet::Spine::HTTP::urldecode(queries[i].request_string));
+        urldecode(queries[i].request_string));
     row[columns_.col_request_raw] = Glib::ustring(queries[i].request_string);
     row[columns_.col_raw_status]  = static_cast<int>(CompareStatus::PENDING);
     row[columns_.col_is_image]   = false;

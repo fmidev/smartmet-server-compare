@@ -1,31 +1,39 @@
 #include "UrlUtils.h"
 
-#include <regex>
+#include <cctype>
 
-std::optional<ServerAddress> parse_server_url(const std::string& url)
+static int hex_digit(char c)
 {
-  // Accepts  http://host:port[/path]  or  http://host[/path]
-  static const std::regex re(R"(https?://([^/:]+)(?::(\d+))?(?:/.*)?)",
-                              std::regex::ECMAScript);
-  std::smatch m;
-  if (!std::regex_match(url, m, re))
-    return std::nullopt;
-
-  ServerAddress addr;
-  addr.host = m[1].str();
-  addr.port = m[2].matched ? m[2].str() : "80";
-  return addr;
+  if (c >= '0' && c <= '9') return c - '0';
+  if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+  if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+  return -1;
 }
 
-std::string build_http_request(const std::string& host,
-                               const std::string& path_and_query)
+std::string urldecode(const std::string& input)
 {
-  return "GET " + path_and_query +
-         " HTTP/1.1\r\n"
-         "Host: " +
-         host +
-         "\r\n"
-         "Accept: */*\r\n"
-         "Connection: close\r\n"
-         "\r\n";
+  std::string out;
+  out.reserve(input.size());
+
+  for (std::size_t i = 0; i < input.size(); ++i)
+  {
+    if (input[i] == '%' && i + 2 < input.size())
+    {
+      int hi = hex_digit(input[i + 1]);
+      int lo = hex_digit(input[i + 2]);
+      if (hi >= 0 && lo >= 0)
+      {
+        out += static_cast<char>(hi * 16 + lo);
+        i += 2;
+        continue;
+      }
+    }
+    else if (input[i] == '+')
+    {
+      out += ' ';
+      continue;
+    }
+    out += input[i];
+  }
+  return out;
 }

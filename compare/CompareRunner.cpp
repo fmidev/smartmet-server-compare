@@ -1,65 +1,11 @@
 #include "CompareRunner.h"
 #include "ContentHandler.h"
+#include "HttpClient.h"
 #include "ImageCompare.h"
-#include "UrlUtils.h"
-
-#include <smartmet/spine/HTTP.h>
-#include <smartmet/spine/TcpMultiQuery.h>
 
 #include <algorithm>
-#include <cctype>
+#include <cmath>
 #include <string>
-
-// ---------------------------------------------------------------------------
-// Internal helpers
-// ---------------------------------------------------------------------------
-
-// Extract bare content-type (before the first ';')
-static std::string base_content_type(const std::string& ct)
-{
-  auto pos = ct.find(';');
-  if (pos == std::string::npos)
-    return ct;
-  return ct.substr(0, pos);
-}
-
-struct ResponseInfo
-{
-  std::string body;
-  std::string content_type;
-  int status_code = 0;
-  std::string error;
-};
-
-static ResponseInfo parse_raw_response(const SmartMet::Spine::TcpMultiQuery::Response& resp)
-{
-  ResponseInfo info;
-
-  if (resp.error_code)
-  {
-    info.error = resp.error_desc;
-    return info;
-  }
-
-  auto [status, response_ptr] = SmartMet::Spine::HTTP::parseResponseFull(resp.body);
-
-  if (status != SmartMet::Spine::HTTP::ParsingStatus::COMPLETE || !response_ptr)
-  {
-    info.error = "Failed to parse HTTP response";
-    // Try to return raw body so user can see something
-    info.body = resp.body;
-    return info;
-  }
-
-  info.status_code = static_cast<int>(response_ptr->getStatus());
-  info.body = response_ptr->getDecodedContent();
-
-  auto ct_header = response_ptr->getHeader("Content-Type");
-  if (ct_header)
-    info.content_type = base_content_type(*ct_header);
-
-  return info;
-}
 
 // ---------------------------------------------------------------------------
 // CompareRunner
@@ -99,8 +45,8 @@ void CompareRunner::request_stop()
 {
   stop_requested_ = true;
   std::lock_guard<std::mutex> lock(active_queries_mutex_);
-  for (auto* mq : active_queries_)
-    mq->stop();
+  for (auto* client : active_queries_)
+    client->stop();
 }
 
 void CompareRunner::stop()
@@ -133,20 +79,27 @@ void CompareRunner::on_dispatch()
   }
 }
 
+// Ensure server_url ends without a slash so that
+// server_url + request_string (which starts with /) is well-formed.
+static std::string normalize_base(const std::string& url)
+{
+  if (!url.empty() && url.back() == '/')
+    return url.substr(0, url.size() - 1);
+  return url;
+}
+
 void CompareRunner::worker(std::vector<QueryInfo> queries,
                            std::string server1_url,
                            std::string server2_url,
                            int max_concurrent,
                            size_t max_size)
 {
-  auto addr1 = parse_server_url(server1_url);
-  auto addr2 = parse_server_url(server2_url);
+  const std::string base1 = normalize_base(server1_url);
+  const std::string base2 = normalize_base(server2_url);
 
   const int total = static_cast<int>(queries.size());
   std::atomic<int> next_idx{0};
 
-  // Each sub-thread claims the next unclaimed query via next_idx and processes
-  // it independently.  All sub-threads share the dispatcher and result_queue_.
   auto task = [&]()
   {
     while (!stop_requested_)
@@ -161,118 +114,99 @@ void CompareRunner::worker(std::vector<QueryInfo> queries,
       result.request_string = q.request_string;
       result.status = CompareStatus::RUNNING;
 
-      // Notify UI that this query is now in flight
       {
         std::lock_guard<std::mutex> lock(mutex_);
         result_queue_.push_back(result);
       }
       dispatcher_.emit();
 
-      if (!addr1 || !addr2)
+      HttpClient client(60);
+      client.add("s1", base1 + q.request_string);
+      client.add("s2", base2 + q.request_string);
+
       {
-        result.error1 = addr1 ? "" : "Invalid server 1 URL";
-        result.error2 = addr2 ? "" : "Invalid server 2 URL";
+        std::lock_guard<std::mutex> lock(active_queries_mutex_);
+        active_queries_.insert(&client);
+      }
+      client.execute();
+      {
+        std::lock_guard<std::mutex> lock(active_queries_mutex_);
+        active_queries_.erase(&client);
+      }
+
+      const auto& r1 = client.response("s1");
+      const auto& r2 = client.response("s2");
+
+      result.body1 = r1.body;
+      result.body2 = r2.body;
+      result.content_type1 = r1.content_type;
+      result.content_type2 = r2.content_type;
+      result.status_code1 = r1.status_code;
+      result.status_code2 = r2.status_code;
+      result.error1 = r1.error;
+      result.error2 = r2.error;
+
+      if (!result.error1.empty() || !result.error2.empty())
+      {
         result.status = CompareStatus::ERROR;
+      }
+      else if (max_size > 0 && (result.body1.size() > max_size || result.body2.size() > max_size))
+      {
+        if (result.body1.size() > max_size)
+          result.error1 = "Response size exceeds limit";
+        if (result.body2.size() > max_size)
+          result.error2 = "Response size exceeds limit";
+        result.status = CompareStatus::TOO_LARGE;
       }
       else
       {
-        const std::string req1 = build_http_request(addr1->host, q.request_string);
-        const std::string req2 = build_http_request(addr2->host, q.request_string);
+        result.kind1 = detect_content_kind(result.content_type1, result.body1);
+        result.kind2 = detect_content_kind(result.content_type2, result.body2);
 
-        SmartMet::Spine::TcpMultiQuery mq(60);
-        mq.add_query("s1", addr1->host, addr1->port, req1);
-        mq.add_query("s2", addr2->host, addr2->port, req2);
+        const bool img1 = is_image_kind(result.kind1);
+        const bool img2 = is_image_kind(result.kind2);
 
+        if (img1 && img2)
         {
-          std::lock_guard<std::mutex> lock(active_queries_mutex_);
-          active_queries_.insert(&mq);
+          try
+          {
+            result.psnr = compute_psnr(result.body1, result.body2);
+            result.status = std::isinf(result.psnr) ? CompareStatus::EQUAL
+                                                    : CompareStatus::DIFFERENT;
+          }
+          catch (const std::exception& e)
+          {
+            result.error1 = e.what();
+            result.status = CompareStatus::ERROR;
+          }
         }
-        mq.execute();
+        else if (img1 != img2)
         {
-          std::lock_guard<std::mutex> lock(active_queries_mutex_);
-          active_queries_.erase(&mq);
-        }
+          const auto& text_kind = img1 ? result.kind2 : result.kind1;
+          const auto& text_body = img1 ? result.body2 : result.body1;
 
-        auto info1 = parse_raw_response(mq["s1"]);
-        auto info2 = parse_raw_response(mq["s2"]);
+          auto [fmt, ferr] = format_for_diff(text_kind, text_body);
+          auto& fmt_slot = img1 ? result.formatted2 : result.formatted1;
+          auto& err_slot = img1 ? result.error2 : result.error1;
+          fmt_slot = fmt.empty() ? text_body : std::move(fmt);
+          if (!ferr.empty()) err_slot = ferr;
 
-        result.body1 = std::move(info1.body);
-        result.body2 = std::move(info2.body);
-        result.content_type1 = std::move(info1.content_type);
-        result.content_type2 = std::move(info2.content_type);
-        result.status_code1 = info1.status_code;
-        result.status_code2 = info2.status_code;
-        result.error1 = std::move(info1.error);
-        result.error2 = std::move(info2.error);
-
-        if (!result.error1.empty() || !result.error2.empty())
-        {
           result.status = CompareStatus::ERROR;
-        }
-        else if (max_size > 0 && (result.body1.size() > max_size || result.body2.size() > max_size))
-        {
-          if (result.body1.size() > max_size)
-            result.error1 = "Response size exceeds limit";
-          if (result.body2.size() > max_size)
-            result.error2 = "Response size exceeds limit";
-          result.status = CompareStatus::TOO_LARGE;
         }
         else
         {
-          result.kind1 = detect_content_kind(result.content_type1, result.body1);
-          result.kind2 = detect_content_kind(result.content_type2, result.body2);
+          auto [fmt1, ferr1] = format_for_diff(result.kind1, result.body1);
+          auto [fmt2, ferr2] = format_for_diff(result.kind2, result.body2);
+          result.formatted1 = std::move(fmt1);
+          result.formatted2 = std::move(fmt2);
 
-          const bool img1 = is_image_kind(result.kind1);
-          const bool img2 = is_image_kind(result.kind2);
+          if (!ferr1.empty()) result.error1 = ferr1;
+          if (!ferr2.empty()) result.error2 = ferr2;
 
-          if (img1 && img2)
-          {
-            // Both images: compare by PSNR via Magick++.
-            try
-            {
-              result.psnr = compute_psnr(result.body1, result.body2);
-              result.status = std::isinf(result.psnr) ? CompareStatus::EQUAL
-                                                      : CompareStatus::DIFFERENT;
-            }
-            catch (const std::exception& e)
-            {
-              result.error1 = e.what();
-              result.status = CompareStatus::ERROR;
-            }
-          }
-          else if (img1 != img2)
-          {
-            // Content type mismatch: one server returned an image, the
-            // other returned text (typically an error page).  Format the
-            // text side for display; leave the image side as-is so the
-            // viewer can render it.
-            const auto& text_kind = img1 ? result.kind2 : result.kind1;
-            const auto& text_body = img1 ? result.body2 : result.body1;
-
-            auto [fmt, ferr] = format_for_diff(text_kind, text_body);
-            auto& fmt_slot = img1 ? result.formatted2 : result.formatted1;
-            auto& err_slot = img1 ? result.error2 : result.error1;
-            fmt_slot = fmt.empty() ? text_body : std::move(fmt);
-            if (!ferr.empty()) err_slot = ferr;
-
-            result.status = CompareStatus::ERROR;
-          }
-          else
-          {
-            // Text / binary path: format for diff.
-            auto [fmt1, ferr1] = format_for_diff(result.kind1, result.body1);
-            auto [fmt2, ferr2] = format_for_diff(result.kind2, result.body2);
-            result.formatted1 = std::move(fmt1);
-            result.formatted2 = std::move(fmt2);
-
-            if (!ferr1.empty()) result.error1 = ferr1;
-            if (!ferr2.empty()) result.error2 = ferr2;
-
-            const bool use_text = !result.formatted1.empty() || !result.formatted2.empty();
-            const bool equal = use_text ? (result.formatted1 == result.formatted2)
-                                        : (result.body1 == result.body2);
-            result.status = equal ? CompareStatus::EQUAL : CompareStatus::DIFFERENT;
-          }
+          const bool use_text = !result.formatted1.empty() || !result.formatted2.empty();
+          const bool equal = use_text ? (result.formatted1 == result.formatted2)
+                                      : (result.body1 == result.body2);
+          result.status = equal ? CompareStatus::EQUAL : CompareStatus::DIFFERENT;
         }
       }
 
@@ -284,7 +218,6 @@ void CompareRunner::worker(std::vector<QueryInfo> queries,
     }
   };
 
-  // Spawn up to max_concurrent sub-threads (but never more than queries to run)
   const int n_threads = std::min(max_concurrent, total);
   std::vector<std::thread> threads;
   threads.reserve(n_threads);

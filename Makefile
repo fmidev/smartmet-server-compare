@@ -1,62 +1,60 @@
-include $(shell smartbuildcfg --prefix)/share/smartmet/devel/makefile.inc
-
 PROG = smartmet-server-compare
 SPEC = smartmet-server-compare
 
-GTKMM_CLAGS = $(shell pkg-config --cflags gtkmm-3.0)
+CXX ?= g++
+CXXSTD ?= c++17
+
+GTKMM_CFLAGS = $(shell pkg-config --cflags gtkmm-3.0)
 GTKMM_LDFLAGS = $(shell pkg-config --libs gtkmm-3.0)
 
 MAGICK_CFLAGS = $(shell pkg-config --cflags Magick++)
 MAGICK_LDFLAGS = $(shell pkg-config --libs Magick++)
 
-LIBS += \
-	$(PREFIX_LDFLAGS) \
-	-lsmartmet-spine \
-	-lsmartmet-macgyver \
+CURL_CFLAGS = $(shell pkg-config --cflags libcurl)
+CURL_LDFLAGS = $(shell pkg-config --libs libcurl)
+
+CFLAGS = -std=$(CXXSTD) -fPIC -Wall -Wextra -Wno-unused-parameter \
+	-O2 -g \
+	$(GTKMM_CFLAGS) \
+	$(MAGICK_CFLAGS) \
+	$(CURL_CFLAGS) \
+	$(EXTRA_CFLAGS)
+
+LIBS = \
 	$(GTKMM_LDFLAGS) \
 	$(MAGICK_LDFLAGS) \
+	$(CURL_LDFLAGS) \
 	-ltinyxml2 \
 	-ljsoncpp \
-	$(REQUIRED_LIBS) \
-	-lpthread -lrt
-
-CFLAGS += \
-	$(PREFIX_CFLAGS) \
-	$(GTKMM_CLAGS) \
-	$(MAGICK_CFLAGS) \
-	$(REQUIRED_CFLAGS) \
-	-I. -I.. -I../..
+	-lpthread
 
 SRC_DIRS := compare
 vpath %.cpp $(SRC_DIRS)
 SRCS := $(foreach dir,$(SRC_DIRS),$(wildcard $(dir)/*.cpp))
-HDRS := $(filter-out $(INTERNAL_HEADERS), $(foreach dir,$(SRC_DIRS),$(wildcard $(dir)/*.h)))
+HDRS := $(foreach dir,$(SRC_DIRS),$(wildcard $(dir)/*.h))
 OBJS := $(patsubst %.cpp, obj/%.o, $(notdir $(SRCS)))
 
 .SUFFIXES: $(SUFFIXES) .cpp
 
 .PHONY: all clean rpm
 
-all: smartmet-server-compare
+all: $(PROG)
 
 clean:
-	rm -rf obj smartmet-server-compare
+	rm -rf obj $(PROG)
 
 rpm: clean $(SPEC).spec
-	rm -f $(SPEC).tar.gz # Clean a possible leftover from previous attempt
+	rm -f $(SPEC).tar.gz
 	tar -czvf $(SPEC).tar.gz --exclude test --exclude-vcs --transform "s,^,$(SPEC)/," *
 	rpmbuild -tb $(SPEC).tar.gz
 	rm -f $(SPEC).tar.gz
 
-smartmet-server-compare: objdir $(OBJS)
+$(PROG): $(OBJS)
 	$(CXX) $(CFLAGS) -o $@ $(OBJS) $(LIBS)
-
-objdir:
-	mkdir -p $(objdir)
 
 obj/%.o : %.cpp
 	@mkdir -p $(dir $@)
-	$(CXX) $(CFLAGS) $(INCLUDES) -c -MD -MF $(patsubst obj/%.o, obj/%.d, $@) -MT $@ -o $@ $<
+	$(CXX) $(CFLAGS) -c -MD -MF $(patsubst obj/%.o, obj/%.d, $@) -MT $@ -o $@ $<
 
 ifneq ($(wildcard obj/*.d),)
 -include $(wildcard obj/*.d)

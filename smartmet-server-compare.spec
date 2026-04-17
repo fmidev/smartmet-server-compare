@@ -2,8 +2,8 @@
 %define SPECNAME smartmet-server-compare
 
 Name: %{SPECNAME}
-Version: 26.4.8
-Release: 2%{?dist}.fmi
+Version: 26.4.17
+Release: 1%{?dist}.fmi
 Summary: SmartMet Server comparison tool
 License: MIT
 URL: https://github.com/fmidev/smartmet-server-compare
@@ -13,10 +13,9 @@ BuildRoot: %{_tmppath}/%{name}-%{version}-%{release}-root-%(%{__id_u} -n)
 BuildRequires: rpm-build
 BuildRequires: gcc-c++
 BuildRequires: make
-BuildRequires: smartmet-library-spine-devel >= 26.4.14
-BuildRequires: smartmet-library-macgyver-devel
 BuildRequires: tinyxml2-devel
 BuildRequires: jsoncpp-devel
+BuildRequires: libcurl-devel
 BuildRequires: pkgconf-pkg-config
 BuildRequires: ImageMagick-c++-devel
 
@@ -28,10 +27,9 @@ BuildRequires: gtkmm30-devel
 Requires: gtkmm30
 %endif
 
-Requires: smartmet-library-spine >= 26.4.14
-Requires: smartmet-library-macgyver
 Requires: tinyxml2
 Requires: jsoncpp
+Requires: libcurl
 Requires: ImageMagick-c++
 Requires: adwaita-icon-theme
 
@@ -57,5 +55,8 @@ rm -rf $RPM_BUILD_ROOT
 %{_bindir}/smartmet-server-compare
 
 %changelog
+* Thu Apr 17 2026 Andris Pavenis <andris.pavenis@fmi.fi> - 26.4.17-1
+- Replace smartmet-library-spine with libcurl; add HTTPS support
+
 * Wed Apr  8 2026 Andris Pavenis <andris.pavenis@fmi.fi> - 26.4.8-2
 - Initial version

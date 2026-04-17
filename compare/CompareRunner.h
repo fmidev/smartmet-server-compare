@@ -10,7 +10,7 @@
 #include <thread>
 #include <vector>
 
-namespace SmartMet::Spine { class TcpMultiQuery; }
+class HttpClient;
 
 #include <glibmm/dispatcher.h>
 
@@ -75,7 +75,7 @@ class CompareRunner
 
   // Live TcpMultiQuery objects that request_stop() should interrupt.
   std::mutex active_queries_mutex_;
-  std::set<SmartMet::Spine::TcpMultiQuery*> active_queries_;
+  std::set<HttpClient*> active_queries_;
 
   // Signals emitted on the main thread
   sigc::signal<void(CompareResult)> sig_result_;

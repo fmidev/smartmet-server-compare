@@ -163,7 +163,7 @@ void RequestListView::update_status(const CompareResult& result)
       row[columns_.col_status]     = status_text(result.status);
       row[columns_.col_psnr]       = format_psnr(result.psnr);
       row[columns_.col_raw_status] = static_cast<int>(result.status);
-      row[columns_.col_is_image]   = is_image_kind(result.kind1) &&
+      row[columns_.col_is_image]   = is_image_kind(result.kind1) ||
                                      is_image_kind(result.kind2);
       row[columns_.col_psnr_val]   = result.psnr;
       return;

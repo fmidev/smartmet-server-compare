@@ -11,6 +11,8 @@ Source0: %{name}.tar.gz
 BuildRoot: %{_tmppath}/%{name}-%{version}-%{release}-root-%(%{__id_u} -n)
 
 BuildRequires: rpm-build
+BuildRequires: autoconf
+BuildRequires: automake
 BuildRequires: gcc-c++
 BuildRequires: make
 BuildRequires: tinyxml2-devel
@@ -38,14 +40,15 @@ SmartMet Server Comparison Tool for finding differences in responses between con
 
 %prep
 %setup -q -n %{DIRNAME}
+autoreconf --install --force
 
 %build
+%configure
 make %{?_smp_mflags}
 
 %install
 rm -rf $RPM_BUILD_ROOT
-mkdir -p $RPM_BUILD_ROOT%{_bindir}
-install -m 755 smartmet-server-compare $RPM_BUILD_ROOT%{_bindir}/
+%make_install
 
 %clean
 rm -rf $RPM_BUILD_ROOT

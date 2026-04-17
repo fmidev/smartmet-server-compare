@@ -1,6 +1,19 @@
 /.vscode
 /.claude
-/obj
-/smartmet-server-compare
-/samples
 ~*
+
+# Autotools generated
+/aclocal.m4
+/autom4te.cache/
+/build-aux/
+/config.log
+/config.status
+/configure
+/Makefile
+/Makefile.in
+
+# Build artifacts
+/smartmet-server-compare
+/compare/.deps/
+*.o
+*.tar.gz

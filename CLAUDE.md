@@ -10,14 +10,17 @@ host part).
 ## Build
 
 ```bash
+./autogen.sh    # generate configure (only needed from git checkout)
+./configure     # detect dependencies
 make            # builds ./smartmet-server-compare
-make clean      # removes obj/ and the binary
-make rpm        # builds an RPM from the tarball
+make install    # installs to $prefix/bin
+make distcheck  # build + test a release tarball
 ```
 
-All `.cpp` files under `compare/` are picked up automatically by the
-Makefile wildcard.  No SmartMet-specific build tooling is required — only
-standard `pkg-config` and packages available on common Linux distributions.
+Uses GNU Autoconf / Automake.  All `.cpp` files under `compare/` are
+listed in `Makefile.am`.  No SmartMet-specific build tooling is required
+— only standard `pkg-config` and packages available on common Linux
+distributions.
 
 ### Dependencies
 

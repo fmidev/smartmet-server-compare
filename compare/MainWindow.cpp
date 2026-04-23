@@ -125,8 +125,9 @@ void MainWindow::on_load_file_requested()
   dlg.add_button("_Open",   Gtk::RESPONSE_OK);
 
   auto filter_txt = Gtk::FileFilter::create();
-  filter_txt->set_name("Text files (*.txt)");
+  filter_txt->set_name("Request lists and access logs (*.txt, *.log)");
   filter_txt->add_pattern("*.txt");
+  filter_txt->add_pattern("*.log");
   dlg.add_filter(filter_txt);
 
   auto filter_all = Gtk::FileFilter::create();

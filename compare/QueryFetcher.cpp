@@ -4,6 +4,7 @@
 #include <json/json.h>
 
 #include <fstream>
+#include <regex>
 #include <string>
 #include <unordered_set>
 #include <utility>
@@ -84,6 +85,28 @@ std::pair<std::vector<QueryInfo>, std::string> QueryFetcher::fetch(const std::st
   return {std::move(queries), {}};
 }
 
+// Parse a SmartMet server access-log line of the form
+//   192.168.14.21 - - [2026-04-23T10:10:02,479843] "GET /path?… HTTP/1.0" 200 …
+// On success returns true and fills `request_out` with the request path +
+// query and `time_out` with the first timestamp.  All matching lines are
+// imported regardless of status code; the user can weed out failures by
+// re-running the comparison.
+static bool parse_access_log_line(const std::string& line,
+                                  std::string& request_out,
+                                  std::string& time_out)
+{
+  static const std::regex re(
+      R"(^\S+\s+\S+\s+\S+\s+\[([^\]]+)\]\s+\"(GET|POST|HEAD)\s+(\S+)\s+HTTP/\S+\"\s+\d+\b.*$)");
+
+  std::smatch m;
+  if (!std::regex_match(line, m, re))
+    return false;
+
+  request_out = m[3].str();
+  time_out = m[1].str();
+  return true;
+}
+
 /* static */
 std::pair<std::vector<QueryInfo>, std::string> QueryFetcher::fetch_from_file(
     const std::filesystem::path& path)
@@ -104,11 +127,24 @@ std::pair<std::vector<QueryInfo>, std::string> QueryFetcher::fetch_from_file(
     if (line.empty() || line.front() == '#')
       continue;
 
-    if (!seen.insert(line).second)
+    std::string req;
+    std::string time_utc;
+
+    if (line.front() == '/')
+    {
+      req = std::move(line);
+    }
+    else if (!parse_access_log_line(line, req, time_utc))
+    {
+      continue;
+    }
+
+    if (!seen.insert(req).second)
       continue;
 
     QueryInfo qi;
-    qi.request_string = std::move(line);
+    qi.request_string = std::move(req);
+    qi.time_utc = std::move(time_utc);
     queries.push_back(std::move(qi));
   }
 

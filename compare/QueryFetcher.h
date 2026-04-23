@@ -13,9 +13,13 @@
  * parses the JSON response, and filters entries whose RequestString starts with
  * a given prefix.
  *
- * Alternatively, queries can be loaded from a plain-text file (one request
- * string per line).  In that case only deduplication is applied; no prefix
- * filtering is performed.
+ * Alternatively, queries can be loaded from a text file.  Two formats are
+ * auto-detected per line:
+ *   - plain request line:  starts with '/' (host-less path + query)
+ *   - SmartMet access-log line:
+ *       IP - - [ts] "METHOD path HTTP/ver" status [ts2] ...
+ *     all GET/POST/HEAD entries are imported regardless of status code.
+ * In both cases duplicates are removed; no prefix filtering is performed.
  */
 class QueryFetcher
 {
@@ -28,9 +32,12 @@ class QueryFetcher
                                                               const std::string& prefix,
                                                               int minutes);
 
-  // Load request strings from a plain-text file (one per line).
-  // Lines that are empty or start with '#' are ignored.  Duplicates are
-  // removed; no prefix filtering is applied.
+  // Load request strings from a text file.  Each line may be either a plain
+  // request string (starting with '/') or a SmartMet access-log line; the
+  // format is auto-detected per line.  Access-log entries are imported
+  // regardless of HTTP status.  Empty lines, lines starting with '#', and
+  // unrecognised lines are skipped.  Duplicates are removed; no prefix
+  // filtering is applied.
   static std::pair<std::vector<QueryInfo>, std::string> fetch_from_file(
       const std::filesystem::path& path);
 

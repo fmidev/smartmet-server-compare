@@ -8,6 +8,8 @@
 #include <gtkmm/filechooserdialog.h>
 #include <gtkmm/messagedialog.h>
 
+#include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <iomanip>
 #include <sstream>
@@ -61,6 +63,35 @@ ImageDiffViewer::~ImageDiffViewer()
 }
 
 // ---------------------------------------------------------------------------
+// Format helpers
+// ---------------------------------------------------------------------------
+
+// Extract a human-readable format tag from the Content-Type header, e.g.
+// "image/png; charset=..."    → "PNG"
+// "image/svg+xml"             → "SVG"
+// "application/pdf"           → "PDF"
+// "image/jpeg"                → "JPEG"
+// An empty input falls back to the semantic content-kind label.
+static std::string short_format_tag(const std::string& content_type, ContentKind kind)
+{
+  const auto slash = content_type.find('/');
+  if (slash != std::string::npos)
+  {
+    auto sub = content_type.substr(slash + 1);
+    const auto sep = sub.find_first_of(";+ ");
+    if (sep != std::string::npos)
+      sub.erase(sep);
+    if (!sub.empty())
+    {
+      std::transform(sub.begin(), sub.end(), sub.begin(),
+                     [](unsigned char c) { return static_cast<char>(std::toupper(c)); });
+      return sub;
+    }
+  }
+  return content_kind_label(kind);
+}
+
+// ---------------------------------------------------------------------------
 // ResultViewer interface
 // ---------------------------------------------------------------------------
 
@@ -93,13 +124,28 @@ void ImageDiffViewer::show(const CompareResult& result,
   if (!img2)
     text2_ = result.formatted2.empty() ? result.body2 : result.formatted2;
 
-  // Info label
+  // Info label: PSNR (when both sides are images), plus per-side
+  // "<format> <W>×<H>" so it's immediately visible whether the two
+  // responses agree on MIME type and image dimensions.
+  const std::string fmt1 = short_format_tag(result.content_type1, result.kind1);
+  const std::string fmt2 = short_format_tag(result.content_type2, result.kind2);
+
+  auto describe_side = [&](const std::string& fmt,
+                           const Glib::RefPtr<Gdk::Pixbuf>& pb) -> std::string
+  {
+    std::ostringstream s;
+    s << fmt;
+    if (pb)
+      s << ' ' << pb->get_width() << "×" << pb->get_height();
+    return s.str();
+  };
+
   std::ostringstream oss;
   if (is_mixed())
   {
     oss << "Content mismatch: "
-        << label1 << " → " << content_kind_label(result.kind1) << "    "
-        << label2 << " → " << content_kind_label(result.kind2);
+        << label1 << " → " << describe_side(fmt1, pb1_) << "    "
+        << label2 << " → " << describe_side(fmt2, pb2_);
   }
   else
   {
@@ -110,12 +156,11 @@ void ImageDiffViewer::show(const CompareResult& result,
         oss << "∞ (identical)";
       else
         oss << std::fixed << std::setprecision(1) << result.psnr << " dB";
+      oss << "    ";
     }
-    if (pb1_ && pb2_)
-    {
-      oss << "    " << label1 << ": " << pb1_->get_width() << "×" << pb1_->get_height()
-          << "    " << label2 << ": " << pb2_->get_width() << "×" << pb2_->get_height();
-    }
+    oss << label1 << ": " << describe_side(fmt1, pb1_)
+        << "    "
+        << label2 << ": " << describe_side(fmt2, pb2_);
   }
   info_label_.set_text(oss.str());
 

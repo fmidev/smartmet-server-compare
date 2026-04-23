@@ -73,6 +73,10 @@ RequestListView::RequestListView()
   col_psnr->set_min_width(80);
   view_.append_column(*col_psnr);
 
+  auto* col_size = Gtk::manage(new Gtk::TreeViewColumn("Size (1 / 2)", columns_.col_size));
+  col_size->set_min_width(120);
+  view_.append_column(*col_size);
+
   auto* col_time = Gtk::manage(new Gtk::TreeViewColumn("Time (UTC)", columns_.col_time));
   col_time->set_min_width(140);
   view_.append_column(*col_time);
@@ -122,6 +126,7 @@ void RequestListView::populate(const std::vector<QueryInfo>& queries)
     row[columns_.col_number]     = i + 1;
     row[columns_.col_index]      = i;
     row[columns_.col_status]     = "PENDING";
+    row[columns_.col_size]       = "";
     row[columns_.col_time]       = Glib::ustring(queries[i].time_utc);
     row[columns_.col_request]     = Glib::ustring(
         urldecode(queries[i].request_string));
@@ -138,6 +143,7 @@ void RequestListView::reset_to_pending()
   {
     row[columns_.col_status]     = "PENDING";
     row[columns_.col_psnr]       = "";
+    row[columns_.col_size]       = "";
     row[columns_.col_raw_status] = static_cast<int>(CompareStatus::PENDING);
     row[columns_.col_is_image]   = false;
     row[columns_.col_psnr_val]   = std::numeric_limits<double>::quiet_NaN();
@@ -155,6 +161,35 @@ static Glib::ustring format_psnr(double psnr)
   return oss.str();
 }
 
+static std::string format_bytes(std::size_t bytes)
+{
+  constexpr double KB = 1024.0;
+  constexpr double MB = 1024.0 * 1024.0;
+  constexpr double GB = 1024.0 * 1024.0 * 1024.0;
+
+  std::ostringstream oss;
+  if (bytes < 1024)
+    oss << bytes << " B";
+  else if (bytes < 1024 * 1024)
+    oss << std::fixed << std::setprecision(1) << (bytes / KB) << " KB";
+  else if (bytes < static_cast<std::size_t>(1024) * 1024 * 1024)
+    oss << std::fixed << std::setprecision(1) << (bytes / MB) << " MB";
+  else
+    oss << std::fixed << std::setprecision(2) << (bytes / GB) << " GB";
+  return oss.str();
+}
+
+static Glib::ustring format_size_pair(std::size_t s1, std::size_t s2)
+{
+  if (s1 == 0 && s2 == 0)
+    return "";
+  const auto a = format_bytes(s1);
+  const auto b = format_bytes(s2);
+  if (a == b)
+    return Glib::ustring(a);
+  return Glib::ustring(a + " / " + b);
+}
+
 void RequestListView::update_status(const CompareResult& result)
 {
   for (auto& row : store_->children())
@@ -163,6 +198,8 @@ void RequestListView::update_status(const CompareResult& result)
     {
       row[columns_.col_status]     = status_text(result.status);
       row[columns_.col_psnr]       = format_psnr(result.psnr);
+      row[columns_.col_size]       = format_size_pair(result.body1.size(),
+                                                       result.body2.size());
       row[columns_.col_raw_status] = static_cast<int>(result.status);
       row[columns_.col_is_image]   = is_image_kind(result.kind1) ||
                                      is_image_kind(result.kind2);

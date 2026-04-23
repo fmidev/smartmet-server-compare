@@ -36,6 +36,40 @@ void ResultPanel::show(const CompareResult& result,
   clear();
 }
 
+std::pair<ResultViewer*, std::shared_ptr<void>>
+ResultPanel::prepare_async(const CompareResult& result,
+                            const std::atomic<bool>& cancel_token)
+{
+  if (result.status == CompareStatus::PENDING ||
+      result.status == CompareStatus::RUNNING)
+    return {nullptr, std::shared_ptr<void>{}};
+
+  for (auto& v : viewers_)
+  {
+    if (v->can_handle(result))
+    {
+      auto prep = v->prepare(result, cancel_token);
+      return {v.get(), std::move(prep)};
+    }
+  }
+  return {nullptr, std::shared_ptr<void>{}};
+}
+
+void ResultPanel::show_prepared(ResultViewer* viewer,
+                                 const CompareResult& result,
+                                 const std::string& label1,
+                                 const std::string& label2,
+                                 std::shared_ptr<void> prepared)
+{
+  if (!viewer)
+  {
+    clear();
+    return;
+  }
+  viewer->show(result, label1, label2, std::move(prepared));
+  set_visible_child(viewer->widget());
+}
+
 void ResultPanel::clear()
 {
   for (auto& v : viewers_)

@@ -3,9 +3,25 @@
 #include <dtl/dtl.hpp>
 
 #include <algorithm>
+#include <memory>
 #include <sstream>
 #include <string>
+#include <utility>
 #include <vector>
+
+// Character-level SES for two strings.
+using CharSes = std::vector<std::pair<char, dtl::elemInfo>>;
+
+// Precomputed diff data, produced off the main thread and applied on it.
+struct DiffView::PreparedDiff
+{
+  // Line-level SES from dtl::Diff::compose().
+  std::vector<std::pair<std::string, dtl::elemInfo>> ses;
+  // For each non-common block, a character-level SES for the first
+  // min(dels, adds) paired del/add lines.  Stored flat in block order; the
+  // consumer walks ses and pulls the next `pairs` entries from here.
+  std::vector<CharSes> paired_cses;
+};
 
 // ---------------------------------------------------------------------------
 // Internal helpers
@@ -20,9 +36,6 @@ static std::vector<std::string> split_lines(const std::string& text)
     lines.push_back(line);
   return lines;
 }
-
-// Character-level SES for two strings.
-using CharSes = std::vector<std::pair<char, dtl::elemInfo>>;
 
 static CharSes char_ses(const std::string& from, const std::string& to)
 {
@@ -291,35 +304,77 @@ void DiffView::set_labels(const std::string& label1, const std::string& label2)
 // Text diff using dtl – two-level (line + character)
 // ---------------------------------------------------------------------------
 
-void DiffView::set_texts(const std::string& text1,
-                         const std::string& text2,
-                         const std::string& label1,
-                         const std::string& label2)
+std::shared_ptr<DiffView::PreparedDiff>
+DiffView::compute_diff(const std::string& text1,
+                        const std::string& text2,
+                        const std::atomic<bool>& cancel_token)
 {
-  set_labels(label1, label2);
-  reset_diff_navigation();
+  auto prepared = std::make_shared<PreparedDiff>();
 
   const auto lines1 = split_lines(text1);
   const auto lines2 = split_lines(text2);
 
   dtl::Diff<std::string, std::vector<std::string>> d(lines1, lines2);
   d.compose();
+  if (cancel_token.load()) return {};
+  prepared->ses = d.getSes().getSequence();
+
+  // Precompute the character-level SES for every paired DELETE/ADD line.
+  // `paired_cses` is stored flat in block order so apply_prepared() can walk
+  // the line SES and pull `pairs` consecutive entries per non-common block.
+  const auto& ses = prepared->ses;
+  std::size_t i = 0;
+  while (i < ses.size())
+  {
+    if (ses[i].second.type == dtl::SES_COMMON) { ++i; continue; }
+
+    std::vector<std::string> dels, adds;
+    while (i < ses.size() && ses[i].second.type != dtl::SES_COMMON)
+    {
+      if (ses[i].second.type == dtl::SES_DELETE)
+        dels.push_back(ses[i].first);
+      else
+        adds.push_back(ses[i].first);
+      ++i;
+    }
+    const std::size_t pairs = std::min(dels.size(), adds.size());
+    for (std::size_t j = 0; j < pairs; ++j)
+    {
+      if (cancel_token.load()) return {};
+      prepared->paired_cses.push_back(char_ses(dels[j], adds[j]));
+    }
+  }
+
+  return prepared;
+}
+
+void DiffView::apply_prepared(const std::shared_ptr<PreparedDiff>& prepared,
+                               const std::string& label1,
+                               const std::string& label2)
+{
+  set_labels(label1, label2);
+  reset_diff_navigation();
 
   auto lbuf = left_view_.get_buffer();
   auto rbuf = right_view_.get_buffer();
   lbuf->set_text("");
   rbuf->set_text("");
 
-  // Right-gravity marks survive every insert() call and advance past new text.
+  if (!prepared)
+  {
+    update_diff_info_label();
+    minimap_.queue_draw();
+    return;
+  }
+
   auto lmark = lbuf->create_mark(lbuf->end(), false);
   auto rmark = rbuf->create_mark(rbuf->end(), false);
 
-  // Walk the line-level SES.  We process COMMON lines immediately.
-  // For consecutive DELETE / ADD elements we collect them into a group first,
-  // then pair them up for character-level diffing.
-  const auto& ses = d.getSes().getSequence();
+  const auto& ses = prepared->ses;
+  const auto& paired = prepared->paired_cses;
+  std::size_t pair_idx = 0;
   std::size_t i = 0;
-  int cur_line = 0;  // absolute line number in the output buffers
+  int cur_line = 0;
 
   while (i < ses.size())
   {
@@ -334,7 +389,6 @@ void DiffView::set_texts(const std::string& text1,
       continue;
     }
 
-    // Collect the next contiguous block of non-COMMON elements.
     std::vector<std::string> dels, adds;
     while (i < ses.size() && ses[i].second.type != dtl::SES_COMMON)
     {
@@ -346,20 +400,16 @@ void DiffView::set_texts(const std::string& text1,
     }
 
     const int block_start = cur_line;
-
-    // Pair up deletions and insertions: paired lines get character-level diff.
     const std::size_t pairs = std::min(dels.size(), adds.size());
 
     for (std::size_t j = 0; j < pairs; ++j)
     {
-      const auto cses = char_ses(dels[j], adds[j]);
-
+      const auto& cses = paired[pair_idx++];
       insert_line(lbuf, lmark, dels[j], tag_del_, tag_del_char_, &cses, dtl::SES_DELETE);
       insert_line(rbuf, rmark, adds[j], tag_ins_, tag_ins_char_, &cses, dtl::SES_ADD);
       ++cur_line;
     }
 
-    // Unmatched deletions (more DELETEs than ADDs): whole-line highlight only.
     for (std::size_t j = pairs; j < dels.size(); ++j)
     {
       insert_line(lbuf, lmark, dels[j], tag_del_, {}, nullptr, dtl::SES_DELETE);
@@ -367,7 +417,6 @@ void DiffView::set_texts(const std::string& text1,
       ++cur_line;
     }
 
-    // Unmatched insertions (more ADDs than DELETEs): whole-line highlight only.
     for (std::size_t j = pairs; j < adds.size(); ++j)
     {
       insert_placeholder(lbuf, lmark, tag_ph_left_);
@@ -384,6 +433,15 @@ void DiffView::set_texts(const std::string& text1,
   total_lines_ = cur_line;
   update_diff_info_label();
   minimap_.queue_draw();
+}
+
+void DiffView::set_texts(const std::string& text1,
+                         const std::string& text2,
+                         const std::string& label1,
+                         const std::string& label2)
+{
+  std::atomic<bool> no_cancel{false};
+  apply_prepared(compute_diff(text1, text2, no_cancel), label1, label2);
 }
 
 // ---------------------------------------------------------------------------

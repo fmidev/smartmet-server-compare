@@ -13,8 +13,12 @@
 #include <gtkmm/paned.h>
 #include <gtkmm/separator.h>
 #include <gtkmm/window.h>
+#include <sigc++/connection.h>
 
+#include <atomic>
+#include <memory>
 #include <mutex>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -27,6 +31,7 @@ class MainWindow : public Gtk::Window
 {
  public:
   MainWindow();
+  ~MainWindow() override;
 
  private:
   // ----- InputBar signal handlers -----
@@ -46,6 +51,16 @@ class MainWindow : public Gtk::Window
 
   // ----- Helpers -----
   void show_result(int index);
+
+  // Orchestrate the asynchronous result-display pipeline: debounces rapid
+  // selection changes, runs ResultPanel::prepare_async on a worker thread,
+  // and posts the outcome back to the main loop via `show_dispatcher_`.
+  // `debounce_ms = 0` skips the delay (used by on_compare_result which is
+  // already event-driven rather than user-scrolling-driven).
+  void schedule_show(int index, int debounce_ms);
+  void kick_show_worker(int index);
+  void on_show_dispatch();
+  void cancel_pending_show();
 
   // ----- Sub-widgets -----
   Gtk::Box main_box_{Gtk::ORIENTATION_VERTICAL, 0};
@@ -71,4 +86,26 @@ class MainWindow : public Gtk::Window
 
   int total_queries_{0};
   int done_queries_{0};
+
+  // ----- Async show pipeline -----
+  // `current_show_idx_` is the latest user-requested index; show workers
+  // that come back with a different idx have their result dropped.  The
+  // cancel token (shared with the in-flight worker, if any) is flipped to
+  // true when a new request arrives so the worker can bail out early.
+  sigc::connection                 show_debounce_;
+  std::shared_ptr<std::atomic<bool>> show_cancel_;
+  std::thread                      show_worker_;
+  int                              current_show_idx_{-1};
+
+  Glib::Dispatcher show_dispatcher_;
+  std::mutex       show_mutex_;
+  struct ShowReady
+  {
+    int                       idx    = -1;
+    ResultViewer*             viewer = nullptr;
+    std::shared_ptr<void>     prepared;
+    std::string               server1;
+    std::string               server2;
+  };
+  ShowReady show_ready_;
 };

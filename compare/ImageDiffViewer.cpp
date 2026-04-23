@@ -101,9 +101,43 @@ bool ImageDiffViewer::can_handle(const CompareResult& result) const
   return is_image_kind(result.kind1) || is_image_kind(result.kind2);
 }
 
+namespace {
+
+// Handle returned by ImageDiffViewer::prepare() and consumed by the
+// 4-argument show() overload.  Carries the pre-decoded pixbufs so the main
+// thread doesn't have to pay the GdkPixbuf/Magick++ cost.
+struct PreparedImages
+{
+  Glib::RefPtr<Gdk::Pixbuf> pb1;
+  Glib::RefPtr<Gdk::Pixbuf> pb2;
+};
+
+}  // namespace
+
+std::shared_ptr<void>
+ImageDiffViewer::prepare(const CompareResult& result,
+                          const std::atomic<bool>& cancel_token)
+{
+  auto p = std::make_shared<PreparedImages>();
+
+  if (is_image_kind(result.kind1))
+  {
+    p->pb1 = pixbuf_from_blob(result.body1);
+    if (cancel_token.load()) return {};
+  }
+  if (is_image_kind(result.kind2))
+  {
+    p->pb2 = pixbuf_from_blob(result.body2);
+    if (cancel_token.load()) return {};
+  }
+
+  return std::static_pointer_cast<void>(p);
+}
+
 void ImageDiffViewer::show(const CompareResult& result,
                            const std::string& label1,
-                           const std::string& label2)
+                           const std::string& label2,
+                           std::shared_ptr<void> prepared)
 {
   blob1_ = result.body1;
   blob2_ = result.body2;
@@ -113,9 +147,18 @@ void ImageDiffViewer::show(const CompareResult& result,
   const bool img1 = is_image_kind(result.kind1);
   const bool img2 = is_image_kind(result.kind2);
 
-  // Load pixbufs only for image sides
-  pb1_ = img1 ? pixbuf_from_blob(blob1_) : Glib::RefPtr<Gdk::Pixbuf>();
-  pb2_ = img2 ? pixbuf_from_blob(blob2_) : Glib::RefPtr<Gdk::Pixbuf>();
+  // Use precomputed pixbufs when available, otherwise decode inline.
+  if (prepared)
+  {
+    auto pi = std::static_pointer_cast<PreparedImages>(prepared);
+    pb1_ = pi->pb1;
+    pb2_ = pi->pb2;
+  }
+  else
+  {
+    pb1_ = img1 ? pixbuf_from_blob(blob1_) : Glib::RefPtr<Gdk::Pixbuf>();
+    pb2_ = img2 ? pixbuf_from_blob(blob2_) : Glib::RefPtr<Gdk::Pixbuf>();
+  }
   pb_diff_.reset();
 
   // For mixed content, store the formatted text for the text side
@@ -181,6 +224,13 @@ void ImageDiffViewer::show(const CompareResult& result,
     rb_animate_.set_active(true);
     set_mode(Mode::ANIMATE);
   }
+}
+
+void ImageDiffViewer::show(const CompareResult& result,
+                           const std::string& label1,
+                           const std::string& label2)
+{
+  show(result, label1, label2, std::shared_ptr<void>{});
 }
 
 void ImageDiffViewer::clear()

@@ -8,6 +8,8 @@
 #include <gtkmm/separator.h>
 #include <gtkmm/textview.h>
 
+#include <atomic>
+#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
@@ -34,7 +36,27 @@ class DiffView : public Gtk::Box
  public:
   DiffView();
 
-  // Replace both panes with a diff of text1 vs text2.
+  // Opaque precomputed diff data.  Produced by compute_diff() on a worker
+  // thread and consumed by apply_prepared() on the main thread.
+  struct PreparedDiff;
+
+  // Run the line + paired-character SES computation.  Safe to call from a
+  // background thread; poll `cancel_token.load()` and bail out early by
+  // returning an empty shared_ptr.
+  static std::shared_ptr<PreparedDiff> compute_diff(
+      const std::string& text1,
+      const std::string& text2,
+      const std::atomic<bool>& cancel_token);
+
+  // Apply a PreparedDiff to the two panes.  Main-thread only.  Passing a
+  // null pointer clears the panes.
+  void apply_prepared(const std::shared_ptr<PreparedDiff>& prepared,
+                      const std::string& label1 = "Server 1",
+                      const std::string& label2 = "Server 2");
+
+  // Replace both panes with a diff of text1 vs text2.  Convenience wrapper
+  // that runs compute_diff() + apply_prepared() synchronously on the
+  // current thread.  May block for large texts.
   void set_texts(const std::string& text1,
                  const std::string& text2,
                  const std::string& label1 = "Server 1",

@@ -33,6 +33,18 @@ class ImageDiffViewer : public ResultViewer
   const char* name() const override { return "image-diff"; }
   bool can_handle(const CompareResult& result) const override;
 
+  // Off-thread: decode both sides' pixbufs (and fall back to Magick++ for
+  // PDFs) so the main-thread show() can pick up cached buffers rather than
+  // blocking on GdkPixbuf/Magick++ itself.
+  std::shared_ptr<void> prepare(const CompareResult& result,
+                                 const std::atomic<bool>& cancel_token) override;
+
+  using ResultViewer::show;
+  void show(const CompareResult& result,
+            const std::string& label1,
+            const std::string& label2,
+            std::shared_ptr<void> prepared) override;
+
   void show(const CompareResult& result,
             const std::string& label1,
             const std::string& label2) override;

@@ -3,11 +3,18 @@
 #include "ImageDiffViewer.h"
 #include "TextDiffViewer.h"
 
+#include <glibmm/main.h>
 #include <gtkmm/filechooserdialog.h>
 #include <gtkmm/messagedialog.h>
 #include <gtkmm/settings.h>
 
 #include <memory>
+#include <utility>
+
+// Delay before the selected row is actually rendered into the result panel.
+// Long enough to skip over rows the user scrolls past, short enough not to
+// feel sticky when the selection settles.
+static constexpr int kShowDebounceMs = 200;
 
 // ---------------------------------------------------------------------------
 // Constructor
@@ -53,12 +60,25 @@ MainWindow::MainWindow()
   list_view_.signal_index_selected().connect(sigc::mem_fun(*this, &MainWindow::on_row_selected));
 
   fetch_dispatcher_.connect(sigc::mem_fun(*this, &MainWindow::on_fetch_dispatch));
+  show_dispatcher_.connect(sigc::mem_fun(*this, &MainWindow::on_show_dispatch));
 
   runner_.signal_result().connect(sigc::mem_fun(*this, &MainWindow::on_compare_result));
   runner_.signal_done().connect(sigc::mem_fun(*this, &MainWindow::on_compare_done));
 
   status_panel_.set_status("Enter source server URL and click \"Fetch queries\".");
   show_all_children();
+}
+
+MainWindow::~MainWindow()
+{
+  // Make sure the show worker is wound down before our members are
+  // destroyed — the worker thread holds raw `this` pointers into
+  // result_panel_, show_mutex_, etc.
+  show_debounce_.disconnect();
+  if (show_cancel_)
+    show_cancel_->store(true);
+  if (show_worker_.joinable())
+    show_worker_.join();
 }
 
 // ---------------------------------------------------------------------------
@@ -236,7 +256,7 @@ void MainWindow::on_compare_result(CompareResult result)
     status_panel_.set_progress(static_cast<double>(done_queries_) / total_queries_);
 
   if (list_view_.selected_index() == result.index)
-    show_result(result.index);
+    schedule_show(result.index, 0);
 }
 
 void MainWindow::on_compare_done()
@@ -258,22 +278,128 @@ void MainWindow::on_compare_done()
 }
 
 // ---------------------------------------------------------------------------
-// Selection
+// Selection & async show pipeline
 // ---------------------------------------------------------------------------
 
 void MainWindow::on_row_selected(int index)
 {
+  schedule_show(index, kShowDebounceMs);
+}
+
+void MainWindow::show_result(int index)
+{
+  // Legacy synchronous path; kept available for callers that want blocking
+  // behaviour.  Nothing in MainWindow currently calls it.
+  result_panel_.show(results_[index],
+                     input_bar_.server1_url(),
+                     input_bar_.server2_url());
+}
+
+void MainWindow::cancel_pending_show()
+{
+  // Cancel any debounced call still queued.
+  show_debounce_.disconnect();
+
+  // Cancel the in-flight worker, if any.  Flipping the token causes the
+  // worker (or the next checkpoint inside it) to bail out; any result it
+  // eventually posts is still discarded by on_show_dispatch() via the
+  // current_show_idx_ check.  We detach so the thread can finish what it
+  // started without holding up the main loop.
+  if (show_cancel_)
+    show_cancel_->store(true);
+  if (show_worker_.joinable())
+    show_worker_.detach();
+}
+
+void MainWindow::schedule_show(int index, int debounce_ms)
+{
+  cancel_pending_show();
+  current_show_idx_ = index;
+
   if (index < 0 || index >= static_cast<int>(results_.size()))
   {
     result_panel_.clear();
     return;
   }
-  show_result(index);
+
+  const auto& result = results_[index];
+
+  // Fast path: cheap states render instantly, no need to bounce through
+  // the worker thread.
+  if (result.status == CompareStatus::PENDING ||
+      result.status == CompareStatus::RUNNING)
+  {
+    result_panel_.clear();
+    return;
+  }
+
+  auto kick = [this, index]() {
+    if (current_show_idx_ != index) return false;
+    kick_show_worker(index);
+    return false;  // one-shot
+  };
+
+  if (debounce_ms <= 0)
+    kick();
+  else
+    show_debounce_ = Glib::signal_timeout().connect(kick, debounce_ms);
 }
 
-void MainWindow::show_result(int index)
+void MainWindow::kick_show_worker(int index)
 {
-  result_panel_.show(results_[index],
-                     input_bar_.server1_url(),
-                     input_bar_.server2_url());
+  // Retire any previously-finished worker before reassigning the slot;
+  // std::thread::operator= onto a joinable thread would std::terminate.
+  if (show_worker_.joinable())
+    show_worker_.detach();
+
+  show_cancel_ = std::make_shared<std::atomic<bool>>(false);
+  auto cancel = show_cancel_;
+
+  // Snapshot the data the worker needs: the result (may be large; copy
+  // rather than reference, because the vector can be mutated concurrently
+  // on the main thread when new compare results arrive) and the server
+  // labels.
+  auto result  = results_[index];
+  auto server1 = input_bar_.server1_url();
+  auto server2 = input_bar_.server2_url();
+
+  show_worker_ = std::thread(
+      [this, index, cancel,
+       result = std::move(result),
+       server1 = std::move(server1),
+       server2 = std::move(server2)]() mutable
+      {
+        auto [viewer, prepared] = result_panel_.prepare_async(result, *cancel);
+        if (cancel->load()) return;
+
+        {
+          std::lock_guard<std::mutex> lock(show_mutex_);
+          show_ready_ = {index, viewer, std::move(prepared),
+                         std::move(server1), std::move(server2)};
+        }
+        show_dispatcher_.emit();
+      });
+}
+
+void MainWindow::on_show_dispatch()
+{
+  ShowReady r;
+  {
+    std::lock_guard<std::mutex> lock(show_mutex_);
+    r = std::move(show_ready_);
+    show_ready_ = {};
+  }
+
+  // Drop stale results: the selection moved on while the worker was busy.
+  if (r.idx != current_show_idx_)
+    return;
+
+  result_panel_.show_prepared(r.viewer, results_[r.idx],
+                              r.server1, r.server2,
+                              std::move(r.prepared));
+
+  // Intentionally do NOT touch show_worker_ here: by the time this handler
+  // runs a newer schedule_show() may already have replaced the thread slot
+  // with a live worker we must not detach.  cancel_pending_show() or the
+  // destructor handles retirement.
 }

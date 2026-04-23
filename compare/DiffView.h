@@ -1,5 +1,7 @@
 #pragma once
 #include <gtkmm/box.h>
+#include <gtkmm/button.h>
+#include <gtkmm/drawingarea.h>
 #include <gtkmm/label.h>
 #include <gtkmm/scrolledwindow.h>
 #include <gtkmm/scrollbar.h>
@@ -7,6 +9,8 @@
 #include <gtkmm/textview.h>
 
 #include <string>
+#include <utility>
+#include <vector>
 
 /**
  * Side-by-side text diff widget styled after kdiff3's central comparison pane.
@@ -60,11 +64,28 @@ class DiffView : public Gtk::Box
 
   void set_labels(const std::string& label1, const std::string& label2);
 
+  // Diff navigation helpers (valid only after set_texts() has built the diff).
+  void reset_diff_navigation();
+  void scroll_to_line(int line);
+  void jump_to_diff(int idx);
+  void on_prev_diff();
+  void on_next_diff();
+  void update_diff_info_label();
+  bool on_minimap_draw(const Cairo::RefPtr<Cairo::Context>& cr);
+  bool on_minimap_button_press(GdkEventButton* event);
+
+  Gtk::Box nav_row_{Gtk::ORIENTATION_HORIZONTAL, 4};
+  Gtk::Button btn_prev_diff_{"Prev diff"};
+  Gtk::Button btn_next_diff_{"Next diff"};
+  Gtk::Label diff_info_label_;
+
   Gtk::Box h_box_{Gtk::ORIENTATION_HORIZONTAL, 0};
   Gtk::Box left_col_{Gtk::ORIENTATION_VERTICAL, 0};
   Gtk::Box right_col_{Gtk::ORIENTATION_VERTICAL, 0};
 
   Gtk::Separator vseparator_{Gtk::ORIENTATION_VERTICAL};
+
+  Gtk::DrawingArea minimap_;
 
   Gtk::Scrollbar hscrollbar_;
   Glib::RefPtr<Gtk::Adjustment> shared_hadj_;
@@ -77,6 +98,12 @@ class DiffView : public Gtk::Box
 
   Gtk::TextView left_view_;
   Gtk::TextView right_view_;
+
+  // Differences tracked during set_texts(): (first_line, last_line) inclusive
+  // in absolute buffer-line numbers.  Both panes share the same line count.
+  std::vector<std::pair<int, int>> diff_ranges_;
+  int total_lines_ = 0;
+  int current_diff_ = -1;
 
   // Text buffer tags (created once in the constructor).
   // Line-level tags are created first so char-level tags get higher priority

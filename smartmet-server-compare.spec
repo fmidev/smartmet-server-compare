@@ -58,7 +58,7 @@ rm -rf $RPM_BUILD_ROOT
 %{_bindir}/smartmet-server-compare
 
 %changelog
-* Thu Apr 17 2026 Andris Pavenis <andris.pavenis@fmi.fi> - 26.4.17-1
+* Fri Apr 17 2026 Andris Pavenis <andris.pavenis@fmi.fi> - 26.4.17-1
 - Replace smartmet-library-spine with libcurl; add HTTPS support
 - Changed to use GNU autotools build system
 

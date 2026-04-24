@@ -148,6 +148,15 @@ DiffView::DiffView() : Gtk::Box(Gtk::ORIENTATION_VERTICAL, 0)
   minimap_.signal_button_press_event().connect(
       sigc::mem_fun(*this, &DiffView::on_minimap_button_press));
 
+  // Tab / Shift-Tab / F3 / Shift-F3 jump between differences when either
+  // pane has keyboard focus.  `false` inserts the handler BEFORE the
+  // default TextView handler so Tab doesn't fall through to focus
+  // traversal or default bindings.
+  left_view_.signal_key_press_event().connect(
+      sigc::mem_fun(*this, &DiffView::on_textview_key_press), false);
+  right_view_.signal_key_press_event().connect(
+      sigc::mem_fun(*this, &DiffView::on_textview_key_press), false);
+
   h_box_.pack_start(left_col_, true, true, 0);
   h_box_.pack_start(vseparator_, false, false, 0);
   h_box_.pack_start(right_col_, true, true, 0);
@@ -433,6 +442,15 @@ void DiffView::apply_prepared(const std::shared_ptr<PreparedDiff>& prepared,
   total_lines_ = cur_line;
   update_diff_info_label();
   minimap_.queue_draw();
+
+  // Centre on the first difference so the user doesn't have to hunt for it
+  // when the two responses differ in only a few lines out of thousands.
+  if (!diff_ranges_.empty())
+  {
+    current_diff_ = 0;
+    scroll_to_line(diff_ranges_.front().first);
+    update_diff_info_label();
+  }
 }
 
 void DiffView::set_texts(const std::string& text1,
@@ -543,6 +561,36 @@ void DiffView::on_next_diff()
 {
   if (diff_ranges_.empty()) return;
   jump_to_diff(current_diff_ < 0 ? 0 : current_diff_ + 1);
+}
+
+bool DiffView::on_textview_key_press(GdkEventKey* event)
+{
+  if (diff_ranges_.empty()) return false;
+
+  // Ctrl/Alt modifiers shouldn't trigger diff navigation — leave those for
+  // TextView's own bindings (copy, select-all, …).
+  constexpr guint kModBlock = GDK_CONTROL_MASK | GDK_MOD1_MASK;
+  if (event->state & kModBlock) return false;
+
+  const bool shift = (event->state & GDK_SHIFT_MASK) != 0;
+
+  switch (event->keyval)
+  {
+    case GDK_KEY_Tab:
+      on_next_diff();
+      return true;
+
+    case GDK_KEY_ISO_Left_Tab:  // GDK gives this when Shift+Tab is pressed
+      on_prev_diff();
+      return true;
+
+    case GDK_KEY_F3:
+      if (shift) on_prev_diff(); else on_next_diff();
+      return true;
+
+    default:
+      return false;
+  }
 }
 
 bool DiffView::on_minimap_draw(const Cairo::RefPtr<Cairo::Context>& cr)

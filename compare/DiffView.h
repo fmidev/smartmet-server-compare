@@ -96,6 +96,10 @@ class DiffView : public Gtk::Box
   bool on_minimap_draw(const Cairo::RefPtr<Cairo::Context>& cr);
   bool on_minimap_button_press(GdkEventButton* event);
 
+  // Tab / Shift-Tab / F3 / Shift-F3 keyboard navigation; runs BEFORE the
+  // TextView's default handler so Tab isn't swallowed for focus traversal.
+  bool on_textview_key_press(GdkEventKey* event);
+
   Gtk::Box nav_row_{Gtk::ORIENTATION_HORIZONTAL, 4};
   Gtk::Button btn_prev_diff_{"Prev diff"};
   Gtk::Button btn_next_diff_{"Next diff"};

@@ -44,6 +44,11 @@ class MainWindow : public Gtk::Window
   void on_row_selected(int index);
   void on_inspect_requested(int index);
 
+  // Application-level keyboard shortcuts: Ctrl+O / Ctrl+F / F5 / Escape /
+  // Ctrl+Q.  Overridden rather than connected so shortcuts fire regardless
+  // of which widget currently has focus.
+  bool on_key_press_event(GdkEventKey* event) override;
+
   // ----- Background-worker callbacks (main thread) -----
   void on_fetch_dispatch();
   void on_queries_fetched(std::vector<QueryInfo> queries);

@@ -307,6 +307,45 @@ void MainWindow::on_inspect_requested(int index)
   dlg.run();
 }
 
+bool MainWindow::on_key_press_event(GdkEventKey* event)
+{
+  // Ctrl-modifier shortcuts first.  We handle them regardless of which
+  // widget has focus so the user can kick off a fetch / compare / load
+  // from anywhere in the window.
+  if (event->state & GDK_CONTROL_MASK)
+  {
+    const guint key = gdk_keyval_to_lower(event->keyval);
+    switch (key)
+    {
+      case GDK_KEY_o:
+        on_load_file_requested();
+        return true;
+      case GDK_KEY_f:
+        on_fetch_requested();
+        return true;
+      case GDK_KEY_r:
+        on_compare_requested();
+        return true;
+      case GDK_KEY_q:
+        close();
+        return true;
+    }
+  }
+
+  // Non-modifier shortcuts.
+  switch (event->keyval)
+  {
+    case GDK_KEY_F5:
+      on_compare_requested();
+      return true;
+    case GDK_KEY_Escape:
+      on_stop_requested();
+      return true;
+  }
+
+  return Gtk::Window::on_key_press_event(event);
+}
+
 void MainWindow::show_result(int index)
 {
   // Legacy synchronous path; kept available for callers that want blocking

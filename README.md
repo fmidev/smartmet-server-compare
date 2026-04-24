@@ -40,7 +40,9 @@ Right-clicking a row shows:
 
 - **Copy request (decoded)** — the URL-decoded request path + query
 - **Copy request (original)** — the raw request string as received from the log
-- **Send request and show transcript…** — re-sends the request to both
-  configured servers and opens a modal showing a `curl -v` style transcript
-  (request headers, response status + headers, and body) side-by-side in a
-  notebook with one tab per server.
+- **Send request to both servers…** — re-sends the request to both configured
+  servers and opens a modal with a `curl -v` style transcript (request
+  headers, response status + headers, and body) in a notebook, one tab per
+  server.
+- **Send request to Server 1…** / **Send request to Server 2…** — same, but
+  hits only the selected server and shows a single-tab transcript.

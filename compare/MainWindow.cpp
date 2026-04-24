@@ -288,22 +288,39 @@ void MainWindow::on_row_selected(int index)
   schedule_show(index, kShowDebounceMs);
 }
 
-void MainWindow::on_inspect_requested(int index)
+void MainWindow::on_inspect_requested(int index,
+                                      RequestListView::InspectTarget target)
 {
   if (index < 0 || index >= static_cast<int>(queries_.size()))
     return;
 
+  using RT = RequestListView::InspectTarget;
+  using DT = InspectDialog::Target;
+
   const std::string srv1 = input_bar_.server1_url();
   const std::string srv2 = input_bar_.server2_url();
-  if (srv1.empty() || srv2.empty())
+
+  // Only require URLs for the servers the user actually wants to hit.
+  const bool need1 = (target != RT::Server2);
+  const bool need2 = (target != RT::Server1);
+  if ((need1 && srv1.empty()) || (need2 && srv2.empty()))
   {
-    Gtk::MessageDialog dlg(*this, "Please enter both server URLs first.",
-                           false, Gtk::MESSAGE_WARNING);
+    Gtk::MessageDialog dlg(*this,
+        "Please enter the target server URL(s) first.",
+        false, Gtk::MESSAGE_WARNING);
     dlg.run();
     return;
   }
 
-  InspectDialog dlg(*this, queries_[index].request_string, srv1, srv2);
+  DT dt = DT::Both;
+  switch (target)
+  {
+    case RT::Server1: dt = DT::Server1; break;
+    case RT::Server2: dt = DT::Server2; break;
+    case RT::Both:    dt = DT::Both;    break;
+  }
+
+  InspectDialog dlg(*this, queries_[index].request_string, srv1, srv2, dt);
   dlg.run();
 }
 

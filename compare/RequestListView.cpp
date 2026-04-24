@@ -106,11 +106,23 @@ RequestListView::RequestListView()
 
   context_menu_.append(*Gtk::manage(new Gtk::SeparatorMenuItem()));
 
-  auto* item_inspect = Gtk::manage(new Gtk::MenuItem(
-      "Send request and show transcript…"));
-  item_inspect->signal_activate().connect(
-      sigc::mem_fun(*this, &RequestListView::on_inspect_requested));
-  context_menu_.append(*item_inspect);
+  auto* item_inspect_both = Gtk::manage(new Gtk::MenuItem(
+      "Send request to both servers…"));
+  item_inspect_both->signal_activate().connect(
+      [this]() { emit_inspect(InspectTarget::Both); });
+  context_menu_.append(*item_inspect_both);
+
+  auto* item_inspect_s1 = Gtk::manage(new Gtk::MenuItem(
+      "Send request to Server 1…"));
+  item_inspect_s1->signal_activate().connect(
+      [this]() { emit_inspect(InspectTarget::Server1); });
+  context_menu_.append(*item_inspect_s1);
+
+  auto* item_inspect_s2 = Gtk::manage(new Gtk::MenuItem(
+      "Send request to Server 2…"));
+  item_inspect_s2->signal_activate().connect(
+      [this]() { emit_inspect(InspectTarget::Server2); });
+  context_menu_.append(*item_inspect_s2);
 
   context_menu_.show_all();
 
@@ -359,11 +371,11 @@ void RequestListView::on_copy_encoded()
   Gtk::Clipboard::get()->set_text(text);
 }
 
-void RequestListView::on_inspect_requested()
+void RequestListView::emit_inspect(InspectTarget target)
 {
   const int idx = selected_index();
   if (idx >= 0)
-    sig_inspect_.emit(idx);
+    sig_inspect_.emit(idx, target);
 }
 
 // ---------------------------------------------------------------------------

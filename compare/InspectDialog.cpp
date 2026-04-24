@@ -46,11 +46,13 @@ std::string rstrip_newline(std::string s)
 InspectDialog::InspectDialog(Gtk::Window& parent,
                              std::string request_string,
                              std::string server1_url,
-                             std::string server2_url)
+                             std::string server2_url,
+                             Target      target)
     : Gtk::Dialog("Request inspector", parent, true),
       request_(std::move(request_string)),
       server1_url_(std::move(server1_url)),
-      server2_url_(std::move(server2_url))
+      server2_url_(std::move(server2_url)),
+      target_(target)
 {
   set_default_size(900, 700);
   set_modal(true);
@@ -70,8 +72,14 @@ InspectDialog::InspectDialog(Gtk::Window& parent,
   scroll1_.add(view1_);
   scroll2_.add(view2_);
 
-  notebook_.append_page(scroll1_, "Server 1");
-  notebook_.append_page(scroll2_, "Server 2");
+  // Show only the tab(s) we'll actually populate.  A single-tab dialog is
+  // still rendered inside a Notebook for layout consistency; the tab label
+  // row hides itself when only one page is present.
+  if (target_ != Target::Server2)
+    notebook_.append_page(scroll1_, "Server 1");
+  if (target_ != Target::Server1)
+    notebook_.append_page(scroll2_, "Server 2");
+  notebook_.set_show_tabs(target_ == Target::Both);
 
   auto* box = get_content_area();
   status_label_.set_xalign(0.0f);
@@ -106,15 +114,19 @@ void InspectDialog::start_request()
   cancel_ = std::make_shared<std::atomic<bool>>(false);
   auto cancel = cancel_;
 
-  auto url1 = server1_url_ + request_;
-  auto url2 = server2_url_ + request_;
+  const bool want1 = (target_ != Target::Server2);
+  const bool want2 = (target_ != Target::Server1);
+
+  auto url1 = want1 ? (server1_url_ + request_) : std::string{};
+  auto url2 = want2 ? (server2_url_ + request_) : std::string{};
 
   worker_ = std::thread(
-      [this, cancel, url1 = std::move(url1), url2 = std::move(url2)]()
+      [this, cancel, want1, want2,
+       url1 = std::move(url1), url2 = std::move(url2)]()
       {
         HttpClient client(60);
-        client.add("s1", url1);
-        client.add("s2", url2);
+        if (want1) client.add("s1", url1);
+        if (want2) client.add("s2", url2);
 
         // Watcher thread polls `cancel` and propagates to HttpClient::stop()
         // so the dialog can be closed while long requests are in flight.
@@ -132,8 +144,8 @@ void InspectDialog::start_request()
 
         {
           std::lock_guard<std::mutex> lock(mutex_);
-          resp1_    = client.response("s1");
-          resp2_    = client.response("s2");
+          if (want1) resp1_ = client.response("s1");
+          if (want2) resp2_ = client.response("s2");
           finished_ = true;
         }
         done_dispatcher_.emit();
@@ -152,16 +164,23 @@ void InspectDialog::on_done()
     r2 = std::move(resp2_);
   }
 
-  render_transcript(view1_, server1_url_ + request_, r1);
-  render_transcript(view2_, server2_url_ + request_, r2);
+  const bool want1 = (target_ != Target::Server2);
+  const bool want2 = (target_ != Target::Server1);
+
+  if (want1) render_transcript(view1_, server1_url_ + request_, r1);
+  if (want2) render_transcript(view2_, server2_url_ + request_, r2);
 
   auto fmt_status = [](const HttpClient::Response& r) -> std::string {
     if (!r.error.empty())
       return "ERROR: " + r.error;
     return "HTTP " + std::to_string(r.status_code);
   };
-  status_label_.set_text("Server 1: " + fmt_status(r1) +
-                         "    Server 2: " + fmt_status(r2));
+
+  std::string status;
+  if (want1) status  = "Server 1: " + fmt_status(r1);
+  if (want1 && want2) status += "    ";
+  if (want2) status += "Server 2: " + fmt_status(r2);
+  status_label_.set_text(status);
 }
 
 void InspectDialog::render_transcript(Gtk::TextView& view,

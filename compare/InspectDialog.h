@@ -26,10 +26,16 @@
 class InspectDialog : public Gtk::Dialog
 {
  public:
+  enum class Target { Both, Server1, Server2 };
+
+  // `target` picks which server(s) the dialog actually sends to and shows.
+  // The non-selected server URL may be left empty (or garbage); it will be
+  // ignored when target != Both.
   InspectDialog(Gtk::Window& parent,
                 std::string request_string,
                 std::string server1_url,
-                std::string server2_url);
+                std::string server2_url,
+                Target      target = Target::Both);
 
   ~InspectDialog() override;
 
@@ -43,6 +49,7 @@ class InspectDialog : public Gtk::Dialog
   std::string request_;
   std::string server1_url_;
   std::string server2_url_;
+  Target      target_;
 
   Gtk::Notebook notebook_;
   Gtk::ScrolledWindow scroll1_;

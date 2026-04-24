@@ -29,6 +29,29 @@ static size_t write_cb(char* ptr, size_t size, size_t nmemb, void* userdata)
   return bytes;
 }
 
+// Response-header callback: libcurl delivers each header line separately,
+// including the status line and the terminating blank line.  Append the
+// whole block verbatim.
+static size_t header_cb(char* ptr, size_t size, size_t nmemb, void* userdata)
+{
+  auto* buf = static_cast<std::string*>(userdata);
+  const size_t bytes = size * nmemb;
+  buf->append(ptr, bytes);
+  return bytes;
+}
+
+// Debug callback used only to capture the outgoing request headers
+// (CURLINFO_HEADER_OUT).  Other debug types are ignored.
+static int debug_cb(CURL*, curl_infotype type, char* data, size_t size, void* userptr)
+{
+  if (type == CURLINFO_HEADER_OUT)
+  {
+    auto* buf = static_cast<std::string*>(userptr);
+    buf->append(data, size);
+  }
+  return 0;
+}
+
 // Extract bare content-type (before the first ';')
 static std::string base_content_type(const char* ct)
 {
@@ -91,6 +114,13 @@ void HttpClient::execute()
     curl_easy_setopt(easy, CURLOPT_FOLLOWLOCATION, 1L);
     curl_easy_setopt(easy, CURLOPT_WRITEFUNCTION, write_cb);
     curl_easy_setopt(easy, CURLOPT_WRITEDATA, &req.resp.body);
+
+    // Capture headers in both directions for "curl -v" style transcripts.
+    curl_easy_setopt(easy, CURLOPT_HEADERFUNCTION, header_cb);
+    curl_easy_setopt(easy, CURLOPT_HEADERDATA, &req.resp.response_headers);
+    curl_easy_setopt(easy, CURLOPT_VERBOSE, 1L);
+    curl_easy_setopt(easy, CURLOPT_DEBUGFUNCTION, debug_cb);
+    curl_easy_setopt(easy, CURLOPT_DEBUGDATA, &req.resp.request_headers);
 
     // Progress callback for cancellation support
     curl_easy_setopt(easy, CURLOPT_XFERINFOFUNCTION, progress_cb);

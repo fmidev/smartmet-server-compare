@@ -25,6 +25,13 @@ class HttpClient
     std::string content_type;   // bare type (before ';')
     int status_code = 0;
     std::string error;          // empty on success
+
+    // Raw HTTP headers as sent/received on the wire.  Both are filled on
+    // every request (including failures, when curl got as far as talking
+    // HTTP) and include the request/status line.  Useful for displaying a
+    // "curl -v" style transcript of the exchange.
+    std::string request_headers;
+    std::string response_headers;
   };
 
   explicit HttpClient(int timeout_sec = 60);

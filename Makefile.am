@@ -53,6 +53,8 @@ smartmet_server_compare_SOURCES = \
 	compare/ImageDiffViewer.h \
 	compare/InputBar.cpp \
 	compare/InputBar.h \
+	compare/InspectDialog.cpp \
+	compare/InspectDialog.h \
 	compare/MainWindow.cpp \
 	compare/MainWindow.h \
 	compare/QueryFetcher.cpp \

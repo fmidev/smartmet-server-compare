@@ -4,6 +4,7 @@
 #include <gtkmm/cellrenderertext.h>
 #include <gtkmm/clipboard.h>
 #include <gtkmm/menuitem.h>
+#include <gtkmm/separatormenuitem.h>
 
 #include <cmath>
 #include <iomanip>
@@ -98,6 +99,14 @@ RequestListView::RequestListView()
   item_copy_enc->signal_activate().connect(
       sigc::mem_fun(*this, &RequestListView::on_copy_encoded));
   context_menu_.append(*item_copy_enc);
+
+  context_menu_.append(*Gtk::manage(new Gtk::SeparatorMenuItem()));
+
+  auto* item_inspect = Gtk::manage(new Gtk::MenuItem(
+      "Send request and show transcript…"));
+  item_inspect->signal_activate().connect(
+      sigc::mem_fun(*this, &RequestListView::on_inspect_requested));
+  context_menu_.append(*item_inspect);
 
   context_menu_.show_all();
 
@@ -326,6 +335,13 @@ void RequestListView::on_copy_encoded()
     return;
   Glib::ustring text = (*sel)[columns_.col_request_raw];
   Gtk::Clipboard::get()->set_text(text);
+}
+
+void RequestListView::on_inspect_requested()
+{
+  const int idx = selected_index();
+  if (idx >= 0)
+    sig_inspect_.emit(idx);
 }
 
 // ---------------------------------------------------------------------------

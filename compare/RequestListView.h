@@ -51,6 +51,10 @@ class RequestListView : public Gtk::Box
   // Fires when the selected row changes.  Argument is the query index, or -1.
   sigc::signal<void(int)>& signal_index_selected() { return sig_selected_; }
 
+  // Fires when the user picks "Send request to both servers" from the
+  // context menu.  Argument is the query index.
+  sigc::signal<void(int)>& signal_inspect_requested() { return sig_inspect_; }
+
   static Glib::ustring status_text(CompareStatus s);
 
  private:
@@ -58,6 +62,7 @@ class RequestListView : public Gtk::Box
   bool on_button_press(GdkEventButton* event);
   void on_copy_decoded();
   void on_copy_encoded();
+  void on_inspect_requested();
   void on_filter_changed();
   bool filter_func(const Gtk::TreeModel::const_iterator& iter);
 
@@ -110,4 +115,5 @@ class RequestListView : public Gtk::Box
   Gtk::ScrolledWindow scroll_;
 
   sigc::signal<void(int)> sig_selected_;
+  sigc::signal<void(int)> sig_inspect_;
 };

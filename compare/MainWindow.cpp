@@ -1,6 +1,7 @@
 #include "MainWindow.h"
 
 #include "ImageDiffViewer.h"
+#include "InspectDialog.h"
 #include "TextDiffViewer.h"
 
 #include <glibmm/main.h>
@@ -58,6 +59,7 @@ MainWindow::MainWindow()
   input_bar_.signal_stop().connect(sigc::mem_fun(*this, &MainWindow::on_stop_requested));
 
   list_view_.signal_index_selected().connect(sigc::mem_fun(*this, &MainWindow::on_row_selected));
+  list_view_.signal_inspect_requested().connect(sigc::mem_fun(*this, &MainWindow::on_inspect_requested));
 
   fetch_dispatcher_.connect(sigc::mem_fun(*this, &MainWindow::on_fetch_dispatch));
   show_dispatcher_.connect(sigc::mem_fun(*this, &MainWindow::on_show_dispatch));
@@ -284,6 +286,25 @@ void MainWindow::on_compare_done()
 void MainWindow::on_row_selected(int index)
 {
   schedule_show(index, kShowDebounceMs);
+}
+
+void MainWindow::on_inspect_requested(int index)
+{
+  if (index < 0 || index >= static_cast<int>(queries_.size()))
+    return;
+
+  const std::string srv1 = input_bar_.server1_url();
+  const std::string srv2 = input_bar_.server2_url();
+  if (srv1.empty() || srv2.empty())
+  {
+    Gtk::MessageDialog dlg(*this, "Please enter both server URLs first.",
+                           false, Gtk::MESSAGE_WARNING);
+    dlg.run();
+    return;
+  }
+
+  InspectDialog dlg(*this, queries_[index].request_string, srv1, srv2);
+  dlg.run();
 }
 
 void MainWindow::show_result(int index)

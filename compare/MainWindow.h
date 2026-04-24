@@ -42,6 +42,7 @@ class MainWindow : public Gtk::Window
 
   // ----- RequestListView selection -----
   void on_row_selected(int index);
+  void on_inspect_requested(int index);
 
   // ----- Background-worker callbacks (main thread) -----
   void on_fetch_dispatch();

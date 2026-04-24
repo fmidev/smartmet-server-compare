@@ -390,6 +390,13 @@ std::string pretty_print_serial(const std::string& body)
 
 ContentKind detect_content_kind(const std::string& content_type, const std::string& body)
 {
+  // Serial is strict enough (outer `a:N:{` required) to safely take
+  // priority over the Content-Type header.  SmartMet serves serial output
+  // as "text/plain; charset=UTF-8", so relying on the header here would
+  // mis-classify it as plain text and skip the pretty-printer.
+  if (looks_like_serial(body))
+    return ContentKind::SERIAL;
+
   if (!content_type.empty())
   {
     ContentKind k = kind_from_header(content_type);

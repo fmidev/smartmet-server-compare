@@ -73,6 +73,7 @@ class RequestListView : public Gtk::Box
       add(col_number);
       add(col_index);
       add(col_status);
+      add(col_http);
       add(col_psnr);
       add(col_size);
       add(col_time);
@@ -86,6 +87,7 @@ class RequestListView : public Gtk::Box
     Gtk::TreeModelColumn<int> col_number;
     Gtk::TreeModelColumn<int> col_index;
     Gtk::TreeModelColumn<Glib::ustring> col_status;
+    Gtk::TreeModelColumn<Glib::ustring> col_http;
     Gtk::TreeModelColumn<Glib::ustring> col_psnr;
     Gtk::TreeModelColumn<Glib::ustring> col_size;
     Gtk::TreeModelColumn<Glib::ustring> col_time;

@@ -70,6 +70,10 @@ RequestListView::RequestListView()
   col_status->set_min_width(80);
   view_.append_column(*col_status);
 
+  auto* col_http = Gtk::manage(new Gtk::TreeViewColumn("HTTP (1 / 2)", columns_.col_http));
+  col_http->set_min_width(90);
+  view_.append_column(*col_http);
+
   auto* col_psnr = Gtk::manage(new Gtk::TreeViewColumn("PSNR (dB)", columns_.col_psnr));
   col_psnr->set_min_width(80);
   view_.append_column(*col_psnr);
@@ -135,6 +139,7 @@ void RequestListView::populate(const std::vector<QueryInfo>& queries)
     row[columns_.col_number]     = i + 1;
     row[columns_.col_index]      = i;
     row[columns_.col_status]     = "PENDING";
+    row[columns_.col_http]       = "";
     row[columns_.col_size]       = "";
     row[columns_.col_time]       = Glib::ustring(queries[i].time_utc);
     row[columns_.col_request]     = Glib::ustring(
@@ -151,6 +156,7 @@ void RequestListView::reset_to_pending()
   for (auto& row : store_->children())
   {
     row[columns_.col_status]     = "PENDING";
+    row[columns_.col_http]       = "";
     row[columns_.col_psnr]       = "";
     row[columns_.col_size]       = "";
     row[columns_.col_raw_status] = static_cast<int>(CompareStatus::PENDING);
@@ -199,6 +205,20 @@ static Glib::ustring format_size_pair(std::size_t s1, std::size_t s2)
   return Glib::ustring(a + " / " + b);
 }
 
+// Zero status code means the request never produced an HTTP reply (typically
+// a DNS / TCP / TLS error); render those as a dash so the cell stays compact.
+static Glib::ustring format_http_pair(int c1, int c2)
+{
+  if (c1 == 0 && c2 == 0)
+    return "";
+  auto one = [](int c) { return c == 0 ? std::string("—") : std::to_string(c); };
+  const auto a = one(c1);
+  const auto b = one(c2);
+  if (a == b)
+    return Glib::ustring(a);
+  return Glib::ustring(a + " / " + b);
+}
+
 void RequestListView::update_status(const CompareResult& result)
 {
   for (auto& row : store_->children())
@@ -206,6 +226,8 @@ void RequestListView::update_status(const CompareResult& result)
     if (row[columns_.col_index] == result.index)
     {
       row[columns_.col_status]     = status_text(result.status);
+      row[columns_.col_http]       = format_http_pair(result.status_code1,
+                                                       result.status_code2);
       row[columns_.col_psnr]       = format_psnr(result.psnr);
       row[columns_.col_size]       = format_size_pair(result.body1.size(),
                                                        result.body2.size());

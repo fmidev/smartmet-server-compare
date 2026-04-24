@@ -16,6 +16,8 @@ enum class ContentKind
   TEXT,       // Plain text
   JSON,       // JSON  – pretty-printed before diff
   XML,        // XML / HTML – pretty-printed before diff
+  SERIAL,     // SmartMet "serial" output (PHP-serialize syntax) –
+              // pretty-printed before diff
 };
 
 // Returns true when `kind` should be compared as a rendered image.

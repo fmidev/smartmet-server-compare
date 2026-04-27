@@ -285,6 +285,17 @@ void MainWindow::on_compare_done()
 
 void MainWindow::on_row_selected(int index)
 {
+  // Skip when the user-driven selection hasn't actually changed.  GTK can
+  // emit selection-changed during a running compare even though the user
+  // never moved the cursor — for instance when ListStore rows update and
+  // a TreeModelFilter renumbers visible paths.  Without this guard each
+  // such spurious event tears down and rebuilds the active viewer (most
+  // visibly: the ImageDiffViewer's animation restarts and any non-default
+  // mode the user picked is reset).  The compare-result path bypasses
+  // this handler and goes through schedule_show() directly, so a final
+  // result for the already-displayed row still re-renders.
+  if (index == current_show_idx_)
+    return;
   schedule_show(index, kShowDebounceMs);
 }
 
@@ -393,25 +404,28 @@ void MainWindow::schedule_show(int index, int debounce_ms)
   cancel_pending_show();
   current_show_idx_ = index;
 
-  if (index < 0 || index >= static_cast<int>(results_.size()))
-  {
-    result_panel_.clear();
-    return;
-  }
-
-  const auto& result = results_[index];
-
-  // Fast path: cheap states render instantly, no need to bounce through
-  // the worker thread.
-  if (result.status == CompareStatus::PENDING ||
-      result.status == CompareStatus::RUNNING)
-  {
-    result_panel_.clear();
-    return;
-  }
-
+  // The clear / pending-state / kick decision is deferred into the timer
+  // callback so a transient -1 → N selection blip (e.g. from filter
+  // updates while a compare is running) doesn't actually clear the view
+  // between debounce ticks.  When debounce_ms is 0 this just runs inline,
+  // matching the previous behaviour for compare-result completions.
   auto kick = [this, index]() {
     if (current_show_idx_ != index) return false;
+
+    if (index < 0 || index >= static_cast<int>(results_.size()))
+    {
+      result_panel_.clear();
+      return false;
+    }
+
+    const auto& result = results_[index];
+    if (result.status == CompareStatus::PENDING ||
+        result.status == CompareStatus::RUNNING)
+    {
+      result_panel_.clear();
+      return false;
+    }
+
     kick_show_worker(index);
     return false;  // one-shot
   };

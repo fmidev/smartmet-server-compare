@@ -58,6 +58,7 @@ class InputBar : public Gtk::Box
   // ----- Signals -----
   sigc::signal<void()>& signal_fetch()      { return sig_fetch_; }
   sigc::signal<void()>& signal_load_file()  { return sig_load_; }
+  sigc::signal<void()>& signal_save_file()  { return sig_save_; }
   sigc::signal<void()>& signal_compare()    { return sig_compare_; }
   sigc::signal<void()>& signal_stop()       { return sig_stop_; }
 
@@ -72,6 +73,7 @@ class InputBar : public Gtk::Box
 
   void on_fetch_clicked();
   void on_load_clicked();
+  void on_save_clicked();
   void on_compare_clicked();
   void on_stop_clicked();
 
@@ -87,6 +89,7 @@ class InputBar : public Gtk::Box
   Gtk::SpinButton spin_minutes_;
   Gtk::Button btn_fetch_{"Fetch queries"};
   Gtk::Button btn_load_file_{"Load from file…"};
+  Gtk::Button btn_save_file_{"Save filtered…"};
 
   // Row 2: target servers
   Gtk::Box   row2_{Gtk::ORIENTATION_HORIZONTAL, 6};
@@ -103,6 +106,7 @@ class InputBar : public Gtk::Box
 
   sigc::signal<void()> sig_fetch_;
   sigc::signal<void()> sig_load_;
+  sigc::signal<void()> sig_save_;
   sigc::signal<void()> sig_compare_;
   sigc::signal<void()> sig_stop_;
 };

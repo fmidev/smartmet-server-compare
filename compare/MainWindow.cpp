@@ -9,6 +9,7 @@
 #include <gtkmm/messagedialog.h>
 #include <gtkmm/settings.h>
 
+#include <fstream>
 #include <memory>
 #include <utility>
 
@@ -55,6 +56,7 @@ MainWindow::MainWindow()
   // Wire signals
   input_bar_.signal_fetch().connect(sigc::mem_fun(*this, &MainWindow::on_fetch_requested));
   input_bar_.signal_load_file().connect(sigc::mem_fun(*this, &MainWindow::on_load_file_requested));
+  input_bar_.signal_save_file().connect(sigc::mem_fun(*this, &MainWindow::on_save_file_requested));
   input_bar_.signal_compare().connect(sigc::mem_fun(*this, &MainWindow::on_compare_requested));
   input_bar_.signal_stop().connect(sigc::mem_fun(*this, &MainWindow::on_stop_requested));
 
@@ -138,6 +140,59 @@ void MainWindow::on_fetch_dispatch()
   }
 
   on_queries_fetched(std::move(result.first));
+}
+
+void MainWindow::on_save_file_requested()
+{
+  // Snapshot the visible (filtered) request strings before opening the
+  // dialog so the export reflects exactly what the user can see right
+  // now, even if the filter or selection changes during the dialog.
+  const auto rows = list_view_.visible_request_strings();
+  if (rows.empty())
+  {
+    Gtk::MessageDialog dlg(*this, "No queries match the current filter.",
+                           false, Gtk::MESSAGE_INFO);
+    dlg.run();
+    return;
+  }
+
+  Gtk::FileChooserDialog dlg(*this, "Save filtered queries to file",
+                             Gtk::FILE_CHOOSER_ACTION_SAVE);
+  dlg.add_button("_Cancel", Gtk::RESPONSE_CANCEL);
+  dlg.add_button("_Save",   Gtk::RESPONSE_OK);
+  dlg.set_do_overwrite_confirmation(true);
+  dlg.set_current_name("queries.txt");
+
+  auto filter_txt = Gtk::FileFilter::create();
+  filter_txt->set_name("Request lists (*.txt)");
+  filter_txt->add_pattern("*.txt");
+  dlg.add_filter(filter_txt);
+
+  auto filter_all = Gtk::FileFilter::create();
+  filter_all->set_name("All files");
+  filter_all->add_pattern("*");
+  dlg.add_filter(filter_all);
+
+  if (dlg.run() != Gtk::RESPONSE_OK)
+    return;
+
+  const std::string path = dlg.get_filename();
+  std::ofstream f(path);
+  if (!f)
+  {
+    Gtk::MessageDialog err(*this, "Cannot open file for writing: " + path,
+                           false, Gtk::MESSAGE_ERROR);
+    err.run();
+    return;
+  }
+
+  f << "# " << rows.size()
+    << " request(s) exported by smartmet-server-compare\n";
+  for (const auto& r : rows)
+    f << r << '\n';
+
+  status_panel_.set_status("Saved " + std::to_string(rows.size()) +
+                           " queries to " + path);
 }
 
 void MainWindow::on_load_file_requested()

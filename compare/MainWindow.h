@@ -37,6 +37,7 @@ class MainWindow : public Gtk::Window
   // ----- InputBar signal handlers -----
   void on_fetch_requested();
   void on_load_file_requested();
+  void on_save_file_requested();
   void on_compare_requested();
   void on_stop_requested();
 

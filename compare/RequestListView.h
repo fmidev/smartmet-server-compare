@@ -48,6 +48,11 @@ class RequestListView : public Gtk::Box
   // Index of the currently selected row, or -1 if no selection.
   int selected_index();
 
+  // Original (URL-encoded) request strings of every row currently visible
+  // through the active filter, in display order.  Useful for exporting a
+  // filtered subset back to a request-list file.
+  std::vector<std::string> visible_request_strings() const;
+
   // Fires when the selected row changes.  Argument is the query index, or -1.
   sigc::signal<void(int)>& signal_index_selected() { return sig_selected_; }
 

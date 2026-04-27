@@ -265,6 +265,20 @@ int RequestListView::selected_index()
   return (*sel)[columns_.col_index];
 }
 
+std::vector<std::string> RequestListView::visible_request_strings() const
+{
+  std::vector<std::string> out;
+  if (!filter_)
+    return out;
+  out.reserve(filter_->children().size());
+  for (const auto& iter : filter_->children())
+  {
+    Glib::ustring s = iter[columns_.col_request_raw];
+    out.push_back(s.raw());
+  }
+  return out;
+}
+
 // ---------------------------------------------------------------------------
 // Filter
 // ---------------------------------------------------------------------------

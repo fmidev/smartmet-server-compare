@@ -6,6 +6,13 @@ Application may get requests
   all `GET` / `POST` / `HEAD` entries are imported regardless of HTTP status)
 - by fetching last requests of specified number of minutes from SmartMet server (note requires admin access to backend server, which should normally be blocked outside local network)
 
+The current request list can also be exported back to a text file via
+**Save filtered…**.  The export contains exactly the rows visible through
+the active filter, so the typical workflow for reproducing differences is:
+run a full comparison, set the status filter to **Different**, click
+**Save filtered…**, and re-load the resulting file to re-test only those
+queries.
+
 Sample screenshot of application:
 <img width="1912" height="1166" alt="image" src="doc/smartmet-server-compare-screenshot.png" />
 

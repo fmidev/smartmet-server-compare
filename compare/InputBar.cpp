@@ -19,6 +19,11 @@ InputBar::InputBar(Settings& settings)
 
   btn_fetch_.signal_clicked().connect(sigc::mem_fun(*this, &InputBar::on_fetch_clicked));
   btn_load_file_.signal_clicked().connect(sigc::mem_fun(*this, &InputBar::on_load_clicked));
+  btn_save_file_.signal_clicked().connect(sigc::mem_fun(*this, &InputBar::on_save_clicked));
+
+  btn_save_file_.set_tooltip_text(
+      "Write the request strings of all currently visible (filtered) rows "
+      "to a text file that 'Load from file' can re-read.");
 
   row1_.set_border_width(4);
   row1_.pack_start(lbl_source_, false, false);
@@ -29,6 +34,7 @@ InputBar::InputBar(Settings& settings)
   row1_.pack_start(spin_minutes_, false, false);
   row1_.pack_start(btn_fetch_, false, false);
   row1_.pack_start(btn_load_file_, false, false);
+  row1_.pack_start(btn_save_file_, false, false);
 
   // ---- Row 2 ----
   lbl_srv1_.set_xalign(1.0f);
@@ -98,6 +104,7 @@ void InputBar::set_idle(bool has_queries)
 {
   btn_fetch_.set_sensitive(true);
   btn_load_file_.set_sensitive(true);
+  btn_save_file_.set_sensitive(has_queries);
   btn_compare_.set_sensitive(has_queries);
   btn_stop_.set_sensitive(false);
 }
@@ -106,6 +113,7 @@ void InputBar::start_fetching()
 {
   btn_fetch_.set_sensitive(false);
   btn_compare_.set_sensitive(false);
+  btn_save_file_.set_sensitive(false);
   // Load and Stop unchanged (Stop should already be off here).
 }
 
@@ -114,6 +122,8 @@ void InputBar::start_comparing()
   btn_fetch_.set_sensitive(false);
   btn_load_file_.set_sensitive(false);
   btn_compare_.set_sensitive(false);
+  // Save stays enabled — the request list isn't mutated during a compare,
+  // so it's safe (and useful) to dump the current filter view to disk.
   btn_stop_.set_sensitive(true);
 }
 
@@ -197,6 +207,11 @@ void InputBar::on_fetch_clicked()
 void InputBar::on_load_clicked()
 {
   sig_load_.emit();
+}
+
+void InputBar::on_save_clicked()
+{
+  sig_save_.emit();
 }
 
 void InputBar::on_compare_clicked()

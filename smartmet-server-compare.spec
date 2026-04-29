@@ -2,7 +2,7 @@
 %define SPECNAME smartmet-server-compare
 
 Name: %{SPECNAME}
-Version: 26.4.17
+Version: 26.4.29
 Release: 1%{?dist}.fmi
 Summary: SmartMet Server comparison tool
 License: MIT
@@ -58,6 +58,9 @@ rm -rf $RPM_BUILD_ROOT
 %{_bindir}/smartmet-server-compare
 
 %changelog
+* Wed Apr 29 2026 Andris Pavēnis <andris.pavenis@fmi.fi> 26.4.29-1.fmi
+- Support images. Many other improvements
+
 * Fri Apr 17 2026 Andris Pavenis <andris.pavenis@fmi.fi> - 26.4.17-1
 - Replace smartmet-library-spine with libcurl; add HTTPS support
 - Changed to use GNU autotools build system

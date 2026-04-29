@@ -1,6 +1,7 @@
 #pragma once
 #include <cmath>
 #include <string>
+#include <vector>
 
 enum class CompareStatus { PENDING, RUNNING, EQUAL, DIFFERENT, ERROR, TOO_LARGE };
 
@@ -32,6 +33,13 @@ struct QueryInfo
 {
   std::string request_string;
   std::string time_utc;
+};
+
+struct FileLoadResult
+{
+  std::vector<QueryInfo> queries;
+  std::string error;
+  std::vector<std::pair<int, std::string>> problematic_lines; // {line_number, reason}
 };
 
 struct CompareResult

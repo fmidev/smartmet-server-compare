@@ -108,23 +108,37 @@ static bool parse_access_log_line(const std::string& line,
 }
 
 /* static */
-std::pair<std::vector<QueryInfo>, std::string> QueryFetcher::fetch_from_file(
-    const std::filesystem::path& path)
+FileLoadResult QueryFetcher::fetch_from_file(const std::filesystem::path& path)
 {
   std::ifstream f(path);
   if (!f)
-    return {{}, "Cannot open file: " + path.string()};
+    return {{}, "Cannot open file: " + path.string(), {}};
 
   std::vector<QueryInfo> queries;
+  std::vector<std::pair<int, std::string>> problematic_lines;
   std::unordered_set<std::string> seen;
   std::string line;
+  int line_number = 0;
 
   while (std::getline(f, line))
   {
+    ++line_number;
+
     if (!line.empty() && line.back() == '\r')
       line.pop_back();
 
-    if (line.empty() || line.front() == '#')
+    // Check for whitespace-only lines
+    bool is_whitespace_only = true;
+    for (char c : line)
+    {
+      if (!std::isspace(static_cast<unsigned char>(c)))
+      {
+        is_whitespace_only = false;
+        break;
+      }
+    }
+
+    if (is_whitespace_only || line.front() == '#')
       continue;
 
     std::string req;
@@ -136,6 +150,8 @@ std::pair<std::vector<QueryInfo>, std::string> QueryFetcher::fetch_from_file(
     }
     else if (!parse_access_log_line(line, req, time_utc))
     {
+      problematic_lines.push_back({line_number,
+          "Does not match request path (starts with '/') or access-log format"});
       continue;
     }
 
@@ -148,7 +164,7 @@ std::pair<std::vector<QueryInfo>, std::string> QueryFetcher::fetch_from_file(
     queries.push_back(std::move(qi));
   }
 
-  return {std::move(queries), {}};
+  return {std::move(queries), {}, std::move(problematic_lines)};
 }
 
 void QueryFetcher::fetch_async(std::string server_url,

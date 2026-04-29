@@ -58,6 +58,7 @@ MainWindow::MainWindow()
   input_bar_.signal_load_file().connect(sigc::mem_fun(*this, &MainWindow::on_load_file_requested));
   input_bar_.signal_save_file().connect(sigc::mem_fun(*this, &MainWindow::on_save_file_requested));
   input_bar_.signal_compare().connect(sigc::mem_fun(*this, &MainWindow::on_compare_requested));
+  input_bar_.signal_rerun_filtered().connect(sigc::mem_fun(*this, &MainWindow::on_rerun_filtered_requested));
   input_bar_.signal_stop().connect(sigc::mem_fun(*this, &MainWindow::on_stop_requested));
 
   list_view_.signal_index_selected().connect(sigc::mem_fun(*this, &MainWindow::on_row_selected));
@@ -216,12 +217,29 @@ void MainWindow::on_load_file_requested()
     return;
 
   const std::string path = dlg.get_filename();
-  auto [queries, error] = QueryFetcher::fetch_from_file(path);
+  auto result = QueryFetcher::fetch_from_file(path);
 
-  if (!error.empty())
+  if (!result.error.empty())
   {
-    status_panel_.set_status("File error: " + error);
+    status_panel_.set_status("File error: " + result.error);
     return;
+  }
+
+  // Show warnings about problematic lines if any
+  if (!result.problematic_lines.empty())
+  {
+    std::string msg = "Skipped " + std::to_string(result.problematic_lines.size()) +
+                      " unrecognised line(s):\n\n";
+    for (size_t i = 0; i < result.problematic_lines.size() && i < 10; ++i)
+    {
+      const auto& [line_num, reason] = result.problematic_lines[i];
+      msg += "Line " + std::to_string(line_num) + ": " + reason + "\n";
+    }
+    if (result.problematic_lines.size() > 10)
+      msg += "\n… and " + std::to_string(result.problematic_lines.size() - 10) + " more.";
+
+    Gtk::MessageDialog warn(*this, msg, false, Gtk::MESSAGE_WARNING);
+    warn.run();
   }
 
   list_view_.clear();
@@ -229,7 +247,7 @@ void MainWindow::on_load_file_requested()
   results_.clear();
   result_panel_.clear();
 
-  on_queries_fetched(std::move(queries));
+  on_queries_fetched(std::move(result.queries));
 }
 
 void MainWindow::on_queries_fetched(std::vector<QueryInfo> queries)
@@ -288,6 +306,38 @@ void MainWindow::on_compare_requested()
   runner_.start(queries_, srv1, srv2,
                 input_bar_.max_concurrent(),
                 input_bar_.max_size_mb() * 1024 * 1024);
+}
+
+void MainWindow::on_rerun_filtered_requested()
+{
+  const auto idx = list_view_.visible_indices();
+  if (idx.empty())
+  {
+    Gtk::MessageDialog dlg(*this, "No queries match the current filter.",
+                           false, Gtk::MESSAGE_INFO);
+    dlg.run();
+    return;
+  }
+
+  std::vector<QueryInfo> filtered;
+  filtered.reserve(idx.size());
+  for (int i : idx)
+    if (i >= 0 && i < static_cast<int>(queries_.size()))
+      filtered.push_back(queries_[i]);
+
+  queries_ = std::move(filtered);
+  list_view_.clear();
+  results_.clear();
+  result_panel_.clear();
+  list_view_.populate(queries_);
+  results_.assign(queries_.size(), CompareResult{});
+  for (int i = 0; i < static_cast<int>(queries_.size()); ++i)
+  {
+    results_[i].index = i;
+    results_[i].request_string = queries_[i].request_string;
+  }
+
+  on_compare_requested();
 }
 
 void MainWindow::on_stop_requested()

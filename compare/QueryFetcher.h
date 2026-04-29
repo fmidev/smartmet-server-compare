@@ -36,10 +36,12 @@ class QueryFetcher
   // request string (starting with '/') or a SmartMet access-log line; the
   // format is auto-detected per line.  Access-log entries are imported
   // regardless of HTTP status.  Empty lines, lines starting with '#', and
-  // unrecognised lines are skipped.  Duplicates are removed; no prefix
-  // filtering is applied.
-  static std::pair<std::vector<QueryInfo>, std::string> fetch_from_file(
-      const std::filesystem::path& path);
+  // whitespace-only lines are skipped.  Problematic lines (those that don't
+  // match either format) are collected with diagnostic info.  Duplicates are
+  // removed; no prefix filtering is applied.
+  // Returns {queries, error_message, problematic_lines}.  error_message is set
+  // only if the file cannot be opened.  problematic_lines contains {line_number, reason}.
+  static FileLoadResult fetch_from_file(const std::filesystem::path& path);
 
   // Asynchronous fetch from server – spawns a background thread, calls cb on
   // *that* thread when done.  The caller dispatches the result to the main thread.

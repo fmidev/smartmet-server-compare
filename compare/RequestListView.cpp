@@ -279,6 +279,17 @@ std::vector<std::string> RequestListView::visible_request_strings() const
   return out;
 }
 
+std::vector<int> RequestListView::visible_indices() const
+{
+  std::vector<int> out;
+  if (!filter_)
+    return out;
+  out.reserve(filter_->children().size());
+  for (const auto& iter : filter_->children())
+    out.push_back(iter[columns_.col_index]);
+  return out;
+}
+
 // ---------------------------------------------------------------------------
 // Filter
 // ---------------------------------------------------------------------------

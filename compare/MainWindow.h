@@ -39,6 +39,7 @@ class MainWindow : public Gtk::Window
   void on_load_file_requested();
   void on_save_file_requested();
   void on_compare_requested();
+  void on_rerun_filtered_requested();
   void on_stop_requested();
 
   // ----- RequestListView selection -----

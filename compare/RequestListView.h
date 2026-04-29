@@ -53,6 +53,12 @@ class RequestListView : public Gtk::Box
   // filtered subset back to a request-list file.
   std::vector<std::string> visible_request_strings() const;
 
+  // Original query indices (col_index) of every row currently visible
+  // through the active filter, in display order.  Use when you need to
+  // map back into the caller's queries vector (e.g. to preserve fields
+  // beyond the request string).
+  std::vector<int> visible_indices() const;
+
   // Fires when the selected row changes.  Argument is the query index, or -1.
   sigc::signal<void(int)>& signal_index_selected() { return sig_selected_; }
 

@@ -56,11 +56,12 @@ class InputBar : public Gtk::Box
   void save_compare_inputs();
 
   // ----- Signals -----
-  sigc::signal<void()>& signal_fetch()      { return sig_fetch_; }
-  sigc::signal<void()>& signal_load_file()  { return sig_load_; }
-  sigc::signal<void()>& signal_save_file()  { return sig_save_; }
-  sigc::signal<void()>& signal_compare()    { return sig_compare_; }
-  sigc::signal<void()>& signal_stop()       { return sig_stop_; }
+  sigc::signal<void()>& signal_fetch()           { return sig_fetch_; }
+  sigc::signal<void()>& signal_load_file()       { return sig_load_; }
+  sigc::signal<void()>& signal_save_file()       { return sig_save_; }
+  sigc::signal<void()>& signal_compare()         { return sig_compare_; }
+  sigc::signal<void()>& signal_rerun_filtered()  { return sig_rerun_filtered_; }
+  sigc::signal<void()>& signal_stop()            { return sig_stop_; }
 
  private:
   void load_combo(Gtk::ComboBoxText& combo, const std::string& key);
@@ -75,6 +76,7 @@ class InputBar : public Gtk::Box
   void on_load_clicked();
   void on_save_clicked();
   void on_compare_clicked();
+  void on_rerun_filtered_clicked();
   void on_stop_clicked();
 
   Settings& settings_;
@@ -102,11 +104,13 @@ class InputBar : public Gtk::Box
   Gtk::Label lbl_max_size_{"Max size (MB):"};
   Gtk::SpinButton spin_max_size_;
   Gtk::Button btn_compare_{"Compare all"};
+  Gtk::Button btn_rerun_filtered_{"Rerun filtered"};
   Gtk::Button btn_stop_{"Stop"};
 
   sigc::signal<void()> sig_fetch_;
   sigc::signal<void()> sig_load_;
   sigc::signal<void()> sig_save_;
   sigc::signal<void()> sig_compare_;
+  sigc::signal<void()> sig_rerun_filtered_;
   sigc::signal<void()> sig_stop_;
 };

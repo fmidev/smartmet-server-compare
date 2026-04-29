@@ -180,7 +180,11 @@ void CompareRunner::worker(std::vector<QueryInfo> queries,
             try
             {
               result.psnr = compute_psnr(result.body1, result.body2);
-              result.status = CompareStatus::DIFFERENT;
+              // Different bytes can still decode to identical pixels (e.g.
+              // re-encoded PNGs).  Treat MSE=0 (PSNR=∞) as equal — the value
+              // still shows in the list so the match is visible.
+              result.status = std::isinf(result.psnr) ? CompareStatus::EQUAL
+                                                      : CompareStatus::DIFFERENT;
             }
             catch (const std::exception& e)
             {

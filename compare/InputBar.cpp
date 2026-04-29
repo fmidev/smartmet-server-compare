@@ -54,7 +54,13 @@ InputBar::InputBar(Settings& settings)
   spin_max_size_.set_width_chars(4);
 
   btn_compare_.signal_clicked().connect(sigc::mem_fun(*this, &InputBar::on_compare_clicked));
+  btn_rerun_filtered_.signal_clicked().connect(
+      sigc::mem_fun(*this, &InputBar::on_rerun_filtered_clicked));
   btn_stop_.signal_clicked().connect(sigc::mem_fun(*this, &InputBar::on_stop_clicked));
+
+  btn_rerun_filtered_.set_tooltip_text(
+      "Replace the request list with the currently visible (filtered) rows "
+      "and re-run the comparison on them.");
 
   row2_.set_border_width(4);
   row2_.pack_start(lbl_srv1_, false, false);
@@ -66,6 +72,7 @@ InputBar::InputBar(Settings& settings)
   row2_.pack_start(lbl_max_size_, false, false);
   row2_.pack_start(spin_max_size_, false, false);
   row2_.pack_start(btn_compare_, false, false);
+  row2_.pack_start(btn_rerun_filtered_, false, false);
   row2_.pack_start(btn_stop_, false, false);
 
   pack_start(row1_, false, false);
@@ -106,6 +113,7 @@ void InputBar::set_idle(bool has_queries)
   btn_load_file_.set_sensitive(true);
   btn_save_file_.set_sensitive(has_queries);
   btn_compare_.set_sensitive(has_queries);
+  btn_rerun_filtered_.set_sensitive(has_queries);
   btn_stop_.set_sensitive(false);
 }
 
@@ -113,6 +121,7 @@ void InputBar::start_fetching()
 {
   btn_fetch_.set_sensitive(false);
   btn_compare_.set_sensitive(false);
+  btn_rerun_filtered_.set_sensitive(false);
   btn_save_file_.set_sensitive(false);
   // Load and Stop unchanged (Stop should already be off here).
 }
@@ -122,6 +131,7 @@ void InputBar::start_comparing()
   btn_fetch_.set_sensitive(false);
   btn_load_file_.set_sensitive(false);
   btn_compare_.set_sensitive(false);
+  btn_rerun_filtered_.set_sensitive(false);
   // Save stays enabled — the request list isn't mutated during a compare,
   // so it's safe (and useful) to dump the current filter view to disk.
   btn_stop_.set_sensitive(true);
@@ -218,6 +228,12 @@ void InputBar::on_compare_clicked()
 {
   save_compare_inputs();
   sig_compare_.emit();
+}
+
+void InputBar::on_rerun_filtered_clicked()
+{
+  save_compare_inputs();
+  sig_rerun_filtered_.emit();
 }
 
 void InputBar::on_stop_clicked()

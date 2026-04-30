@@ -490,9 +490,6 @@ bool MainWindow::on_key_press_event(GdkEventKey* event)
       case GDK_KEY_o:
         on_load_file_requested();
         return true;
-      case GDK_KEY_f:
-        on_fetch_requested();
-        return true;
       case GDK_KEY_r:
         on_compare_requested();
         return true;

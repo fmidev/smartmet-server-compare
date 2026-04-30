@@ -45,6 +45,8 @@ smartmet_server_compare_SOURCES = \
 	compare/ContentHandler.h \
 	compare/DiffView.cpp \
 	compare/DiffView.h \
+	compare/EditQueryDialog.cpp \
+	compare/EditQueryDialog.h \
 	compare/HttpClient.cpp \
 	compare/HttpClient.h \
 	compare/ImageCompare.cpp \

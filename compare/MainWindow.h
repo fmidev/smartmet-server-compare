@@ -42,9 +42,11 @@ class MainWindow : public Gtk::Window
   void on_rerun_filtered_requested();
   void on_stop_requested();
 
-  // ----- RequestListView selection -----
+  // ----- RequestListView selection & editing -----
   void on_row_selected(int index);
   void on_inspect_requested(int index, RequestListView::InspectTarget target);
+  void on_query_edited(int index, const std::string& new_request,
+                       RequestListView::EditAction action);
 
   // Application-level keyboard shortcuts: Ctrl+O / Ctrl+F / F5 / Escape /
   // Ctrl+Q.  Overridden rather than connected so shortcuts fire regardless

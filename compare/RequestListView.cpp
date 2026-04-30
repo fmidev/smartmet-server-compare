@@ -1,10 +1,12 @@
 #include "RequestListView.h"
+#include "EditQueryDialog.h"
 #include "UrlUtils.h"
 
 #include <gtkmm/cellrenderertext.h>
 #include <gtkmm/clipboard.h>
 #include <gtkmm/menuitem.h>
 #include <gtkmm/separatormenuitem.h>
+#include <gtkmm/window.h>
 
 #include <cmath>
 #include <iomanip>
@@ -94,6 +96,13 @@ RequestListView::RequestListView()
       sigc::mem_fun(*this, &RequestListView::on_selection_changed_internal));
 
   // ---- Context menu ----
+  auto* item_edit = Gtk::manage(new Gtk::MenuItem("Edit query…"));
+  item_edit->signal_activate().connect(
+      sigc::mem_fun(*this, &RequestListView::on_edit_query));
+  context_menu_.append(*item_edit);
+
+  context_menu_.append(*Gtk::manage(new Gtk::SeparatorMenuItem()));
+
   auto* item_copy_dec = Gtk::manage(new Gtk::MenuItem("Copy request (decoded)"));
   item_copy_dec->signal_activate().connect(
       sigc::mem_fun(*this, &RequestListView::on_copy_decoded));
@@ -401,6 +410,29 @@ void RequestListView::emit_inspect(InspectTarget target)
   const int idx = selected_index();
   if (idx >= 0)
     sig_inspect_.emit(idx, target);
+}
+
+void RequestListView::on_edit_query()
+{
+  auto sel = view_.get_selection()->get_selected();
+  if (!sel)
+    return;
+
+  const int index = (*sel)[columns_.col_index];
+  const std::string raw =
+      static_cast<Glib::ustring>((*sel)[columns_.col_request_raw]).raw();
+
+  auto* win = dynamic_cast<Gtk::Window*>(get_toplevel());
+  if (!win)
+    return;
+
+  EditQueryDialog dlg(*win, raw);
+  const int resp = dlg.run();
+
+  if (resp == EditQueryDialog::RESPONSE_REPLACE)
+    sig_query_edited_.emit(index, dlg.get_result_request(), EditAction::Replace);
+  else if (resp == EditQueryDialog::RESPONSE_ADD_AFTER)
+    sig_query_edited_.emit(index, dlg.get_result_request(), EditAction::AddAfter);
 }
 
 // ---------------------------------------------------------------------------

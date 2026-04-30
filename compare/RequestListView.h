@@ -1,4 +1,5 @@
 #pragma once
+#include "EditQueryDialog.h"
 #include "Types.h"
 
 #include <gtkmm/box.h>
@@ -69,6 +70,16 @@ class RequestListView : public Gtk::Box
   // context menu.  Arguments: query index, and the chosen target.
   sigc::signal<void(int, InspectTarget)>& signal_inspect_requested() { return sig_inspect_; }
 
+  // What the user wants done with the edited query.
+  enum class EditAction { Replace, AddAfter };
+
+  // Fires after the user closes the Edit Query dialog with Replace or Add After.
+  // Arguments: original query index, new URL-encoded request string, action.
+  sigc::signal<void(int, std::string, EditAction)>& signal_query_edited()
+  {
+    return sig_query_edited_;
+  }
+
   static Glib::ustring status_text(CompareStatus s);
 
  private:
@@ -76,6 +87,7 @@ class RequestListView : public Gtk::Box
   bool on_button_press(GdkEventButton* event);
   void on_copy_decoded();
   void on_copy_encoded();
+  void on_edit_query();
   void emit_inspect(InspectTarget target);
   void on_filter_changed();
   bool filter_func(const Gtk::TreeModel::const_iterator& iter);
@@ -132,4 +144,5 @@ class RequestListView : public Gtk::Box
 
   sigc::signal<void(int)>                       sig_selected_;
   sigc::signal<void(int, InspectTarget)>        sig_inspect_;
+  sigc::signal<void(int, std::string, EditAction)> sig_query_edited_;
 };

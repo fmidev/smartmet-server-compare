@@ -63,6 +63,7 @@ MainWindow::MainWindow()
 
   list_view_.signal_index_selected().connect(sigc::mem_fun(*this, &MainWindow::on_row_selected));
   list_view_.signal_inspect_requested().connect(sigc::mem_fun(*this, &MainWindow::on_inspect_requested));
+  list_view_.signal_query_edited().connect(sigc::mem_fun(*this, &MainWindow::on_query_edited));
 
   fetch_dispatcher_.connect(sigc::mem_fun(*this, &MainWindow::on_fetch_dispatch));
   show_dispatcher_.connect(sigc::mem_fun(*this, &MainWindow::on_show_dispatch));
@@ -438,6 +439,42 @@ void MainWindow::on_inspect_requested(int index,
 
   InspectDialog dlg(*this, queries_[index].request_string, srv1, srv2, dt);
   dlg.run();
+}
+
+void MainWindow::on_query_edited(int index,
+                                  const std::string& new_request,
+                                  RequestListView::EditAction action)
+{
+  if (index < 0 || index >= static_cast<int>(queries_.size()))
+    return;
+
+  runner_.request_stop();
+  cancel_pending_show();
+  result_panel_.clear();
+
+  if (action == RequestListView::EditAction::Replace)
+  {
+    queries_[index].request_string = new_request;
+  }
+  else  // AddAfter
+  {
+    QueryInfo q;
+    q.request_string = new_request;
+    q.time_utc       = queries_[index].time_utc;
+    queries_.insert(queries_.begin() + index + 1, std::move(q));
+  }
+
+  list_view_.populate(queries_);
+  results_.assign(queries_.size(), CompareResult{});
+  for (int i = 0; i < static_cast<int>(queries_.size()); ++i)
+  {
+    results_[i].index          = i;
+    results_[i].request_string = queries_[i].request_string;
+  }
+
+  input_bar_.set_idle(!queries_.empty());
+  status_panel_.set_status("Query list updated (" +
+                           std::to_string(queries_.size()) + " queries).");
 }
 
 bool MainWindow::on_key_press_event(GdkEventKey* event)

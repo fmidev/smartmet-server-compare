@@ -1,6 +1,6 @@
 #include "UrlUtils.h"
 
-#include <cctype>
+#include <string>
 
 static int hex_digit(char c)
 {
@@ -34,6 +34,31 @@ std::string urldecode(const std::string& input)
       continue;
     }
     out += input[i];
+  }
+  return out;
+}
+
+std::string urlencode(const std::string& input)
+{
+  static const char kHex[] = "0123456789ABCDEF";
+  std::string out;
+  out.reserve(input.size() * 3);
+  for (auto uc = reinterpret_cast<const unsigned char*>(input.data()),
+            end = uc + input.size(); uc != end; ++uc)
+  {
+    const unsigned char c = *uc;
+    if ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') ||
+        (c >= '0' && c <= '9') ||
+        c == '-' || c == '_' || c == '.' || c == '~')
+    {
+      out += static_cast<char>(c);
+    }
+    else
+    {
+      out += '%';
+      out += kHex[(c >> 4) & 0x0F];
+      out += kHex[c & 0x0F];
+    }
   }
   return out;
 }

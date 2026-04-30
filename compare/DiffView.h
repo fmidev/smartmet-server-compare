@@ -5,6 +5,7 @@
 #include <gtkmm/label.h>
 #include <gtkmm/scrolledwindow.h>
 #include <gtkmm/scrollbar.h>
+#include <gtkmm/searchentry.h>
 #include <gtkmm/separator.h>
 #include <gtkmm/textview.h>
 
@@ -100,10 +101,26 @@ class DiffView : public Gtk::Box
   // TextView's default handler so Tab isn't swallowed for focus traversal.
   bool on_textview_key_press(GdkEventKey* event);
 
+  // In-pane text search (Ctrl+F to open, Escape to close, F3 to navigate).
+  void open_search();
+  void close_search();
+  void run_search();
+  void update_search_highlights();
+  void search_jump(int delta);
+  void update_search_info_label();
+  bool on_search_key_press(GdkEventKey* event);
+
   Gtk::Box nav_row_{Gtk::ORIENTATION_HORIZONTAL, 4};
   Gtk::Button btn_prev_diff_{"Prev diff"};
   Gtk::Button btn_next_diff_{"Next diff"};
   Gtk::Label diff_info_label_;
+
+  // Search bar (shown on Ctrl+F, hidden on Escape / close button).
+  Gtk::Box         search_bar_{Gtk::ORIENTATION_HORIZONTAL, 4};
+  Gtk::SearchEntry search_entry_;
+  Gtk::Button      btn_search_prev_{"◀"};
+  Gtk::Button      btn_search_next_{"▶"};
+  Gtk::Label       search_info_label_;
 
   Gtk::Box h_box_{Gtk::ORIENTATION_HORIZONTAL, 0};
   Gtk::Box left_col_{Gtk::ORIENTATION_VERTICAL, 0};
@@ -140,6 +157,17 @@ class DiffView : public Gtk::Box
   Glib::RefPtr<Gtk::TextBuffer::Tag> tag_ph_right_;   // grey placeholder line (right)
   Glib::RefPtr<Gtk::TextBuffer::Tag> tag_del_char_;   // darker-red, changed char runs (left)
   Glib::RefPtr<Gtk::TextBuffer::Tag> tag_ins_char_;   // darker-green, changed char runs (right)
+  // Search highlight tags – created after diff tags so they take priority.
+  Glib::RefPtr<Gtk::TextBuffer::Tag> tag_search_left_;
+  Glib::RefPtr<Gtk::TextBuffer::Tag> tag_search_right_;
+  Glib::RefPtr<Gtk::TextBuffer::Tag> tag_search_cur_left_;
+  Glib::RefPtr<Gtk::TextBuffer::Tag> tag_search_cur_right_;
+
+  // Search state.
+  struct SearchHit { bool left_pane; int line; int start_offset; int end_offset; };
+  std::vector<SearchHit> search_hits_;
+  int  current_search_hit_ = -1;
+  bool search_active_      = false;
 
   bool syncing_scroll_{false};
 };

@@ -170,8 +170,36 @@ DiffView::DiffView() : Gtk::Box(Gtk::ORIENTATION_VERTICAL, 0)
   hscrollbar_.set_orientation(Gtk::ORIENTATION_HORIZONTAL);
   hscrollbar_.set_adjustment(shared_hadj_);
 
-  pack_start(nav_row_, false, false, 0);
-  pack_start(h_box_, true, true, 0);
+  // Search bar – packed between the nav row and the text area.
+  {
+    auto* close_btn = Gtk::manage(new Gtk::Button("✕"));
+    close_btn->set_relief(Gtk::RELIEF_NONE);
+    close_btn->signal_clicked().connect(sigc::mem_fun(*this, &DiffView::close_search));
+    auto* find_lbl = Gtk::manage(new Gtk::Label("Find:"));
+    search_entry_.set_placeholder_text("Search…");
+    search_entry_.set_size_request(220, -1);
+    search_entry_.signal_search_changed().connect(
+        sigc::mem_fun(*this, &DiffView::run_search));
+    search_entry_.signal_key_press_event().connect(
+        sigc::mem_fun(*this, &DiffView::on_search_key_press), false);
+    btn_search_prev_.signal_clicked().connect([this] { search_jump(-1); });
+    btn_search_next_.signal_clicked().connect([this] { search_jump(+1); });
+    search_info_label_.set_width_chars(12);
+    search_info_label_.set_xalign(0.0f);
+    search_bar_.set_margin_top(2);
+    search_bar_.set_margin_bottom(2);
+    search_bar_.set_margin_start(4);
+    search_bar_.pack_start(*close_btn,        false, false, 0);
+    search_bar_.pack_start(*find_lbl,         false, false, 0);
+    search_bar_.pack_start(search_entry_,     false, false, 0);
+    search_bar_.pack_start(btn_search_prev_,  false, false, 0);
+    search_bar_.pack_start(btn_search_next_,  false, false, 0);
+    search_bar_.pack_start(search_info_label_,false, false, 0);
+  }
+
+  pack_start(nav_row_,    false, false, 0);
+  pack_start(search_bar_, false, false, 0);
+  pack_start(h_box_,      true,  true,  0);
   pack_start(hscrollbar_, false, false, 0);
 
   update_diff_info_label();
@@ -203,8 +231,19 @@ DiffView::DiffView() : Gtk::Box(Gtk::ORIENTATION_VERTICAL, 0)
   tag_ins_char_ = rbuf->create_tag("ins_c");
   tag_ins_char_->property_background() = "#88ff88";  // darker green
 
+  // Search highlight tags – created after diff tags so they take priority.
+  tag_search_left_ = lbuf->create_tag("search");
+  tag_search_left_->property_background() = "#ffff66";
+  tag_search_right_ = rbuf->create_tag("search");
+  tag_search_right_->property_background() = "#ffff66";
+  tag_search_cur_left_ = lbuf->create_tag("search_cur");
+  tag_search_cur_left_->property_background() = "#ffaa00";
+  tag_search_cur_right_ = rbuf->create_tag("search_cur");
+  tag_search_cur_right_->property_background() = "#ffaa00";
+
   connect_scroll_sync();
   show_all();
+  search_bar_.hide();  // shown only when the user opens search with Ctrl+F
 }
 
 void DiffView::init_column(Gtk::Box& col,
@@ -565,14 +604,34 @@ void DiffView::on_next_diff()
 
 bool DiffView::on_textview_key_press(GdkEventKey* event)
 {
-  if (diff_ranges_.empty()) return false;
-
-  // Ctrl/Alt modifiers shouldn't trigger diff navigation — leave those for
-  // TextView's own bindings (copy, select-all, …).
-  constexpr guint kModBlock = GDK_CONTROL_MASK | GDK_MOD1_MASK;
-  if (event->state & kModBlock) return false;
-
   const bool shift = (event->state & GDK_SHIFT_MASK) != 0;
+  const bool ctrl  = (event->state & GDK_CONTROL_MASK) != 0;
+  const bool alt   = (event->state & GDK_MOD1_MASK) != 0;
+
+  // Ctrl+F: open / re-focus the search bar.
+  if (ctrl && !alt && (event->keyval == GDK_KEY_f || event->keyval == GDK_KEY_F)) {
+    open_search();
+    return true;
+  }
+
+  // When the search bar is open, F3/Shift-F3 and Escape operate on search.
+  if (search_active_) {
+    switch (event->keyval) {
+      case GDK_KEY_F3:
+        search_jump(shift ? -1 : +1);
+        return true;
+      case GDK_KEY_Escape:
+        close_search();
+        return true;
+      default:
+        break;
+    }
+  }
+
+  // Ctrl/Alt modifiers — let TextView handle them (copy, select-all, …).
+  if (ctrl || alt) return false;
+
+  if (diff_ranges_.empty()) return false;
 
   switch (event->keyval)
   {
@@ -656,4 +715,141 @@ bool DiffView::on_minimap_button_press(GdkEventButton* event)
       static_cast<int>(event->y / h * total_lines_), 0, total_lines_ - 1);
   scroll_to_line(target_line);
   return true;
+}
+
+// ---------------------------------------------------------------------------
+// In-pane text search
+// ---------------------------------------------------------------------------
+
+void DiffView::open_search()
+{
+  search_active_ = true;
+  search_bar_.show();
+  search_entry_.grab_focus();
+  search_entry_.select_region(0, -1);
+}
+
+void DiffView::close_search()
+{
+  search_active_ = false;
+  search_bar_.hide();
+
+  auto lbuf = left_view_.get_buffer();
+  auto rbuf = right_view_.get_buffer();
+  lbuf->remove_tag(tag_search_left_,     lbuf->begin(), lbuf->end());
+  lbuf->remove_tag(tag_search_cur_left_, lbuf->begin(), lbuf->end());
+  rbuf->remove_tag(tag_search_right_,    rbuf->begin(), rbuf->end());
+  rbuf->remove_tag(tag_search_cur_right_,rbuf->begin(), rbuf->end());
+
+  search_hits_.clear();
+  current_search_hit_ = -1;
+
+  left_view_.grab_focus();
+}
+
+void DiffView::run_search()
+{
+  auto lbuf = left_view_.get_buffer();
+  auto rbuf = right_view_.get_buffer();
+
+  lbuf->remove_tag(tag_search_left_,     lbuf->begin(), lbuf->end());
+  lbuf->remove_tag(tag_search_cur_left_, lbuf->begin(), lbuf->end());
+  rbuf->remove_tag(tag_search_right_,    rbuf->begin(), rbuf->end());
+  rbuf->remove_tag(tag_search_cur_right_,rbuf->begin(), rbuf->end());
+
+  search_hits_.clear();
+  current_search_hit_ = -1;
+
+  const Glib::ustring query = search_entry_.get_text();
+  if (query.empty()) {
+    update_search_info_label();
+    return;
+  }
+
+  // Collect matches from one buffer and add to search_hits_.
+  auto collect = [this, &query](bool left_pane,
+                                Glib::RefPtr<Gtk::TextBuffer> buf,
+                                const Glib::RefPtr<Gtk::TextBuffer::Tag>& hit_tag)
+  {
+    Gtk::TextIter ms, me;
+    auto it = buf->begin();
+    const auto lim = buf->end();
+    while (it.forward_search(query, Gtk::TEXT_SEARCH_TEXT_ONLY, ms, me, lim)) {
+      search_hits_.push_back({left_pane, ms.get_line(), ms.get_offset(), me.get_offset()});
+      buf->apply_tag(hit_tag, ms, me);
+      it = me;
+    }
+  };
+
+  collect(true,  lbuf, tag_search_left_);
+  collect(false, rbuf, tag_search_right_);
+
+  // Sort by line, then left pane before right for the same line.
+  std::sort(search_hits_.begin(), search_hits_.end(),
+    [](const SearchHit& a, const SearchHit& b) {
+      if (a.line != b.line)           return a.line < b.line;
+      if (a.left_pane != b.left_pane) return a.left_pane > b.left_pane;
+      return a.start_offset < b.start_offset;
+    });
+
+  if (!search_hits_.empty()) {
+    current_search_hit_ = 0;
+    update_search_highlights();
+  }
+  update_search_info_label();
+}
+
+void DiffView::update_search_highlights()
+{
+  auto lbuf = left_view_.get_buffer();
+  auto rbuf = right_view_.get_buffer();
+  lbuf->remove_tag(tag_search_cur_left_, lbuf->begin(), lbuf->end());
+  rbuf->remove_tag(tag_search_cur_right_,rbuf->begin(), rbuf->end());
+
+  if (search_hits_.empty() || current_search_hit_ < 0) return;
+
+  const auto& h   = search_hits_[current_search_hit_];
+  auto&       buf = h.left_pane ? lbuf : rbuf;
+  auto& cur_tag   = h.left_pane ? tag_search_cur_left_ : tag_search_cur_right_;
+  buf->apply_tag(cur_tag,
+                 buf->get_iter_at_offset(h.start_offset),
+                 buf->get_iter_at_offset(h.end_offset));
+  scroll_to_line(h.line);
+}
+
+void DiffView::search_jump(int delta)
+{
+  if (search_hits_.empty()) return;
+  const int n = static_cast<int>(search_hits_.size());
+  current_search_hit_ = ((current_search_hit_ + delta) % n + n) % n;
+  update_search_highlights();
+  update_search_info_label();
+}
+
+void DiffView::update_search_info_label()
+{
+  if (search_hits_.empty())
+    search_info_label_.set_text(search_entry_.get_text().empty() ? "" : "No matches");
+  else
+    search_info_label_.set_text(std::to_string(current_search_hit_ + 1) +
+                                "/" + std::to_string(search_hits_.size()));
+}
+
+bool DiffView::on_search_key_press(GdkEventKey* event)
+{
+  const bool shift = (event->state & GDK_SHIFT_MASK) != 0;
+  switch (event->keyval) {
+    case GDK_KEY_Escape:
+      close_search();
+      return true;
+    case GDK_KEY_F3:
+      search_jump(shift ? -1 : +1);
+      return true;
+    case GDK_KEY_Return:
+    case GDK_KEY_KP_Enter:
+      search_jump(shift ? -1 : +1);
+      return true;
+    default:
+      return false;
+  }
 }

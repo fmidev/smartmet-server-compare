@@ -22,10 +22,7 @@ EXTRA_DIST = $(SPEC) autogen.sh m4/ax_cxx_compile_stdcxx.m4
 RPM_TARBALL = smartmet-server-compare.tar.gz
 
 $(RPM_TARBALL):
-	tar -czf $@ --exclude-vcs \
-		--transform 's,^,smartmet-server-compare/,' \
-		compare/ m4/ $(SPEC) configure.ac Makefile.am autogen.sh \
-		CLAUDE.md LICENSE README.md
+	git archive --prefix=smartmet-server-compare/ HEAD | gzip > $@
 
 .PHONY: rpm srpm
 

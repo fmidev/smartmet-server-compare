@@ -159,6 +159,12 @@ void CompareRunner::worker(std::vector<QueryInfo> queries,
           result.error2 = "Response size exceeds limit";
         result.status = CompareStatus::TOO_LARGE;
       }
+      else if (result.status_code1 >= 400 && result.status_code1 == result.status_code2)
+      {
+        // Both servers agree on the same error status — treat as equal without
+        // diffing bodies (error-message text differences are usually noise).
+        result.status = CompareStatus::EQUAL;
+      }
       else
       {
         result.kind1 = detect_content_kind(result.content_type1, result.body1);

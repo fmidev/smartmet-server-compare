@@ -32,6 +32,12 @@ RequestListView::RequestListView()
   cb_status_.append("Error");
   cb_status_.set_active(0);
 
+  cb_http_.append("All");
+  cb_http_.append("2XX both");
+  cb_http_.append(u8"Same ≥400");
+  cb_http_.append("Different");
+  cb_http_.set_active(0);
+
   spin_psnr_.set_range(0, 999);
   spin_psnr_.set_increments(1, 10);
   spin_psnr_.set_value(0);
@@ -42,6 +48,8 @@ RequestListView::RequestListView()
       sigc::mem_fun(*this, &RequestListView::on_filter_changed));
   cb_status_.signal_changed().connect(
       sigc::mem_fun(*this, &RequestListView::on_filter_changed));
+  cb_http_.signal_changed().connect(
+      sigc::mem_fun(*this, &RequestListView::on_filter_changed));
   spin_psnr_.signal_value_changed().connect(
       sigc::mem_fun(*this, &RequestListView::on_filter_changed));
 
@@ -50,6 +58,8 @@ RequestListView::RequestListView()
   filter_bar_.pack_start(cb_content_, false, false);
   filter_bar_.pack_start(lbl_status_, false, false, 8);
   filter_bar_.pack_start(cb_status_, false, false);
+  filter_bar_.pack_start(lbl_http_, false, false, 8);
+  filter_bar_.pack_start(cb_http_, false, false);
   filter_bar_.pack_start(lbl_psnr_, false, false, 8);
   filter_bar_.pack_start(spin_psnr_, false, false);
 
@@ -169,6 +179,8 @@ void RequestListView::populate(const std::vector<QueryInfo>& queries)
     row[columns_.col_raw_status]  = static_cast<int>(CompareStatus::PENDING);
     row[columns_.col_is_image]   = false;
     row[columns_.col_psnr_val]   = std::numeric_limits<double>::quiet_NaN();
+    row[columns_.col_http_code1] = 0;
+    row[columns_.col_http_code2] = 0;
   }
 }
 
@@ -183,6 +195,8 @@ void RequestListView::reset_to_pending()
     row[columns_.col_raw_status] = static_cast<int>(CompareStatus::PENDING);
     row[columns_.col_is_image]   = false;
     row[columns_.col_psnr_val]   = std::numeric_limits<double>::quiet_NaN();
+    row[columns_.col_http_code1] = 0;
+    row[columns_.col_http_code2] = 0;
   }
 }
 
@@ -256,6 +270,8 @@ void RequestListView::update_status(const CompareResult& result)
       row[columns_.col_is_image]   = is_image_kind(result.kind1) ||
                                      is_image_kind(result.kind2);
       row[columns_.col_psnr_val]   = result.psnr;
+      row[columns_.col_http_code1] = result.status_code1;
+      row[columns_.col_http_code2] = result.status_code2;
       return;
     }
   }
@@ -348,14 +364,39 @@ bool RequestListView::filter_func(const Gtk::TreeModel::const_iterator& iter)
   switch (status_idx)
   {
     case 0:  // All
-      return true;
+      break;
     case 1:  // Equal
-      return raw_status == CompareStatus::EQUAL;
+      if (raw_status != CompareStatus::EQUAL) return false;
+      break;
     case 2:  // Different
-      return raw_status == CompareStatus::DIFFERENT;
+      if (raw_status != CompareStatus::DIFFERENT) return false;
+      break;
     case 3:  // Error
-      return raw_status == CompareStatus::ERROR ||
-             raw_status == CompareStatus::TOO_LARGE;
+      if (raw_status != CompareStatus::ERROR &&
+          raw_status != CompareStatus::TOO_LARGE) return false;
+      break;
+  }
+
+  // ---- HTTP status filter ----
+  const int http_idx = cb_http_.get_active_row_number();
+
+  if (http_idx != 0)
+  {
+    const int c1 = (*iter)[columns_.col_http_code1];
+    const int c2 = (*iter)[columns_.col_http_code2];
+
+    switch (http_idx)
+    {
+      case 1:  // 2XX both
+        if (c1 < 200 || c1 > 299 || c2 < 200 || c2 > 299) return false;
+        break;
+      case 2:  // Same ≥400
+        if (c1 < 400 || c1 != c2) return false;
+        break;
+      case 3:  // Different
+        if (c1 == c2) return false;
+        break;
+    }
   }
 
   return true;

@@ -21,9 +21,10 @@
  * and its current status.  Owns the ListStore, a TreeModelFilter, and the
  * column model.
  *
- * Two independent filter axes:
+ * Three independent filter axes:
  *   Content type : All | Text | Image  (+ optional PSNR threshold for Image)
  *   Status       : All | Equal | Different | Error
+ *   HTTP status  : All | 2XX both | Same | Different
  *
  * Emits signal_index_selected(int) whenever the selection changes.  The
  * argument is the original query index (-1 when nothing is selected).
@@ -109,6 +110,8 @@ class RequestListView : public Gtk::Box
       add(col_raw_status);
       add(col_is_image);
       add(col_psnr_val);
+      add(col_http_code1);
+      add(col_http_code2);
     }
     Gtk::TreeModelColumn<int> col_number;
     Gtk::TreeModelColumn<int> col_index;
@@ -123,6 +126,8 @@ class RequestListView : public Gtk::Box
     Gtk::TreeModelColumn<int>    col_raw_status;  // CompareStatus as int
     Gtk::TreeModelColumn<bool>   col_is_image;
     Gtk::TreeModelColumn<double> col_psnr_val;
+    Gtk::TreeModelColumn<int>    col_http_code1;
+    Gtk::TreeModelColumn<int>    col_http_code2;
   };
 
   Columns columns_;
@@ -137,6 +142,8 @@ class RequestListView : public Gtk::Box
   Gtk::ComboBoxText cb_content_;
   Gtk::Label lbl_status_{"Status:"};
   Gtk::ComboBoxText cb_status_;
+  Gtk::Label lbl_http_{"HTTP:"};
+  Gtk::ComboBoxText cb_http_;
   Gtk::Label lbl_psnr_{"Max PSNR (dB):"};
   Gtk::SpinButton spin_psnr_;
 

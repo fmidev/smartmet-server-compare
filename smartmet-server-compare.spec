@@ -2,7 +2,7 @@
 %define SPECNAME smartmet-server-compare
 
 Name: %{SPECNAME}
-Version: 26.4.29
+Version: 26.5.5
 Release: 1%{?dist}.fmi
 Summary: SmartMet Server comparison tool
 License: MIT
@@ -58,6 +58,9 @@ rm -rf $RPM_BUILD_ROOT
 %{_bindir}/smartmet-server-compare
 
 %changelog
+* Tue May 5 2026 Andris Pavenis <andris.pavenis@fmi.fi> 26.5.5-1.fmi
+- Added HTTP status filter
+
 * Wed Apr 29 2026 Andris Pavēnis <andris.pavenis@fmi.fi> 26.4.29-1.fmi
 - Support images. Many other improvements
 

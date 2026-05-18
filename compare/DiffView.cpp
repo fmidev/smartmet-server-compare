@@ -21,7 +21,84 @@ struct DiffView::PreparedDiff
   // min(dels, adds) paired del/add lines.  Stored flat in block order; the
   // consumer walks ses and pulls the next `pairs` entries from here.
   std::vector<CharSes> paired_cses;
+
+  // Host-normalisation data — populated only when host_port1/2 were supplied.
+  // Both vectors are parallel to paired_cses (same length or both empty).
+  std::vector<bool> pair_is_host_only;  // true → render as context, not diff
+  struct PairHostSpans {
+    DiffView::HostSpanList del_spans;  // [start, end) spans in the del line
+    DiffView::HostSpanList add_spans;  // [start, end) spans in the add line
+  };
+  std::vector<PairHostSpans> pair_host_spans;
 };
+
+// ---------------------------------------------------------------------------
+// Host-normalisation helpers (used by compute_diff)
+// ---------------------------------------------------------------------------
+
+// Return sorted, non-overlapping [start, end) character spans in `line` where
+// host_port (and, if host_port contains a ':', the bare host without port)
+// appears.  Bare-host spans that are already covered by a host:port span are
+// not added separately.
+static DiffView::HostSpanList find_host_spans(const std::string& line,
+                                               const std::string& host_port)
+{
+  DiffView::HostSpanList spans;
+  if (host_port.empty()) return spans;
+
+  auto overlaps = [&](std::size_t s, std::size_t e) {
+    for (const auto& [a, b] : spans)
+      if (s < b && e > a) return true;
+    return false;
+  };
+
+  // host:port occurrences (most specific — find first so they take priority).
+  for (std::size_t p = 0;
+       (p = line.find(host_port, p)) != std::string::npos;
+       p += host_port.size())
+    spans.push_back({p, p + host_port.size()});
+
+  // Bare host occurrences (only when host_port contains a port).
+  const auto colon = host_port.find(':');
+  if (colon != std::string::npos)
+  {
+    const std::string host_only = host_port.substr(0, colon);
+    if (!host_only.empty())
+    {
+      for (std::size_t p = 0;
+           (p = line.find(host_only, p)) != std::string::npos;
+           p += host_only.size())
+      {
+        if (!overlaps(p, p + host_only.size()))
+          spans.push_back({p, p + host_only.size()});
+      }
+    }
+  }
+
+  std::sort(spans.begin(), spans.end());
+  return spans;
+}
+
+// Normalise `line` for equality comparison: replace each host_port span
+// (and bare-host span, if port is present) with a fixed placeholder.
+static std::string normalize_line_for_cmp(const std::string& line,
+                                           const std::string& host_port)
+{
+  const auto spans = find_host_spans(line, host_port);
+  if (spans.empty()) return line;
+
+  std::string result;
+  result.reserve(line.size());
+  std::size_t pos = 0;
+  for (const auto& [s, e] : spans)
+  {
+    result.append(line, pos, s - pos);
+    result += "HOST";
+    pos = e;
+  }
+  result.append(line, pos);
+  return result;
+}
 
 // ---------------------------------------------------------------------------
 // Internal helpers
@@ -62,7 +139,8 @@ static void insert_line(Glib::RefPtr<Gtk::TextBuffer>&          buf,
                         const Glib::RefPtr<Gtk::TextBuffer::Tag>& line_tag,
                         const Glib::RefPtr<Gtk::TextBuffer::Tag>& char_tag,
                         const CharSes*                            ses,
-                        dtl::edit_t                              keep_type)
+                        dtl::edit_t                              keep_type,
+                        const DiffView::HostSpanList&            host_spans = {})
 {
   const int start = mark->get_iter().get_offset();
   buf->insert(mark->get_iter(), text + "\n");
@@ -99,9 +177,22 @@ static void insert_line(Glib::RefPtr<Gtk::TextBuffer>&          buf,
     }
     else if (t == keep_type)
     {
-      // Differing character on our side – start/continue highlighted run
-      if (run_start < 0)
-        run_start = pos;
+      // Check whether this character position falls inside a host span;
+      // if so suppress the highlight so host-URL differences are not shown.
+      const int line_pos = pos - start;
+      bool in_host = false;
+      for (const auto& [hs, he] : host_spans)
+      {
+        if (line_pos >= static_cast<int>(hs) && line_pos < static_cast<int>(he))
+        {
+          in_host = true;
+          break;
+        }
+      }
+      if (in_host)
+        flush_run(pos);          // end any ongoing run before entering a host span
+      else if (run_start < 0)
+        run_start = pos;         // start/continue highlighted run
       ++pos;
     }
     // else: t == the other side's type; character not in our text, skip
@@ -355,9 +446,12 @@ void DiffView::set_labels(const std::string& label1, const std::string& label2)
 std::shared_ptr<DiffView::PreparedDiff>
 DiffView::compute_diff(const std::string& text1,
                         const std::string& text2,
-                        const std::atomic<bool>& cancel_token)
+                        const std::atomic<bool>& cancel_token,
+                        const std::string& host_port1,
+                        const std::string& host_port2)
 {
   auto prepared = std::make_shared<PreparedDiff>();
+  const bool host_norm = !host_port1.empty() && !host_port2.empty();
 
   const auto lines1 = split_lines(text1);
   const auto lines2 = split_lines(text2);
@@ -370,6 +464,7 @@ DiffView::compute_diff(const std::string& text1,
   // Precompute the character-level SES for every paired DELETE/ADD line.
   // `paired_cses` is stored flat in block order so apply_prepared() can walk
   // the line SES and pull `pairs` consecutive entries per non-common block.
+  // When host_norm is true, also populate pair_is_host_only and pair_host_spans.
   const auto& ses = prepared->ses;
   std::size_t i = 0;
   while (i < ses.size())
@@ -390,6 +485,20 @@ DiffView::compute_diff(const std::string& text1,
     {
       if (cancel_token.load()) return {};
       prepared->paired_cses.push_back(char_ses(dels[j], adds[j]));
+
+      if (host_norm)
+      {
+        // Mark pair as host-only if normalized versions are identical.
+        prepared->pair_is_host_only.push_back(
+            normalize_line_for_cmp(dels[j], host_port1) ==
+            normalize_line_for_cmp(adds[j], host_port2));
+
+        // Compute host spans for char-highlight suppression.
+        PreparedDiff::PairHostSpans spans;
+        spans.del_spans = find_host_spans(dels[j], host_port1);
+        spans.add_spans = find_host_spans(adds[j], host_port2);
+        prepared->pair_host_spans.push_back(std::move(spans));
+      }
     }
   }
 
@@ -420,6 +529,8 @@ void DiffView::apply_prepared(const std::shared_ptr<PreparedDiff>& prepared,
 
   const auto& ses = prepared->ses;
   const auto& paired = prepared->paired_cses;
+  const bool host_norm = !prepared->pair_is_host_only.empty();
+  static const HostSpanList no_spans;
   std::size_t pair_idx = 0;
   std::size_t i = 0;
   int cur_line = 0;
@@ -447,19 +558,48 @@ void DiffView::apply_prepared(const std::shared_ptr<PreparedDiff>& prepared,
       ++i;
     }
 
-    const int block_start = cur_line;
     const std::size_t pairs = std::min(dels.size(), adds.size());
+
+    // Track diff-range fragments within the block, skipping host-only pairs.
+    int diff_start = -1;
+    auto begin_diff = [&]() { if (diff_start < 0) diff_start = cur_line; };
+    auto flush_diff = [&]() {
+      if (diff_start >= 0) {
+        diff_ranges_.emplace_back(diff_start, cur_line - 1);
+        diff_start = -1;
+      }
+    };
 
     for (std::size_t j = 0; j < pairs; ++j)
     {
-      const auto& cses = paired[pair_idx++];
-      insert_line(lbuf, lmark, dels[j], tag_del_, tag_del_char_, &cses, dtl::SES_DELETE);
-      insert_line(rbuf, rmark, adds[j], tag_ins_, tag_ins_char_, &cses, dtl::SES_ADD);
+      const auto& cses = paired[pair_idx];
+      const bool host_only = host_norm && prepared->pair_is_host_only[pair_idx];
+      const auto& del_spans = host_norm ? prepared->pair_host_spans[pair_idx].del_spans
+                                        : no_spans;
+      const auto& add_spans = host_norm ? prepared->pair_host_spans[pair_idx].add_spans
+                                        : no_spans;
+      ++pair_idx;
+
+      if (host_only)
+      {
+        // Pairs that differ only in the server hostname are treated as context
+        // lines: show original text from each side but without diff colouring.
+        flush_diff();
+        lbuf->insert(lmark->get_iter(), dels[j] + "\n");
+        rbuf->insert(rmark->get_iter(), adds[j] + "\n");
+      }
+      else
+      {
+        begin_diff();
+        insert_line(lbuf, lmark, dels[j], tag_del_, tag_del_char_, &cses, dtl::SES_DELETE, del_spans);
+        insert_line(rbuf, rmark, adds[j], tag_ins_, tag_ins_char_, &cses, dtl::SES_ADD,    add_spans);
+      }
       ++cur_line;
     }
 
     for (std::size_t j = pairs; j < dels.size(); ++j)
     {
+      begin_diff();
       insert_line(lbuf, lmark, dels[j], tag_del_, {}, nullptr, dtl::SES_DELETE);
       insert_placeholder(rbuf, rmark, tag_ph_right_);
       ++cur_line;
@@ -467,12 +607,13 @@ void DiffView::apply_prepared(const std::shared_ptr<PreparedDiff>& prepared,
 
     for (std::size_t j = pairs; j < adds.size(); ++j)
     {
+      begin_diff();
       insert_placeholder(lbuf, lmark, tag_ph_left_);
       insert_line(rbuf, rmark, adds[j], tag_ins_, {}, nullptr, dtl::SES_ADD);
       ++cur_line;
     }
 
-    diff_ranges_.emplace_back(block_start, cur_line - 1);
+    flush_diff();
   }
 
   lbuf->delete_mark(lmark);

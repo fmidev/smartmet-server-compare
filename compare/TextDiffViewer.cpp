@@ -21,7 +21,8 @@ std::shared_ptr<void> TextDiffViewer::prepare(const CompareResult& result,
   if (!has_text)
     return std::shared_ptr<void>{};
 
-  auto diff = DiffView::compute_diff(result.formatted1, result.formatted2, cancel_token);
+  auto diff = DiffView::compute_diff(result.formatted1, result.formatted2, cancel_token,
+                                     result.host_port1, result.host_port2);
   if (!diff)
     return std::shared_ptr<void>{};
   // Cast down to the type-erased void via shared_ptr aliasing.

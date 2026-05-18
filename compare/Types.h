@@ -75,5 +75,11 @@ struct CompareResult
   // Image comparison metric: NaN = not computed, +inf = identical images.
   double psnr = std::numeric_limits<double>::quiet_NaN();
 
+  // Non-empty when "Ignore server host in response URLs" is active.
+  // Each is the "host[:port]" portion of the respective server URL.
+  // DiffView uses these to treat host-URL-only differences as equal.
+  std::string host_port1;
+  std::string host_port2;
+
   CompareStatus status = CompareStatus::PENDING;
 };

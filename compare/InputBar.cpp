@@ -75,8 +75,17 @@ InputBar::InputBar(Settings& settings)
   row2_.pack_start(btn_rerun_filtered_, false, false);
   row2_.pack_start(btn_stop_, false, false);
 
+  // ---- Row 3 ----
+  row3_.set_border_width(4);
+  chk_ignore_host_.set_tooltip_text(
+      "Replace each server's hostname (with and without port) in response "
+      "bodies with a placeholder before comparing, so host-only URL "
+      "differences do not count as content differences.");
+  row3_.pack_start(chk_ignore_host_, false, false);
+
   pack_start(row1_, false, false);
   pack_start(row2_, false, false);
+  pack_start(row3_, false, false);
 
   // ---- Initial values from Settings ----
   load_combo(ent_source_, "source_server");
@@ -86,6 +95,7 @@ InputBar::InputBar(Settings& settings)
   spin_minutes_.set_value(settings_.get_int("minutes", 2));
   spin_concurrent_.set_value(settings_.get_int("max_concurrent", 4));
   spin_max_size_.set_value(settings_.get_int("max_size_mb", 10));
+  chk_ignore_host_.set_active(settings_.get_int("ignore_server_host", 0) != 0);
 
   // Initial sensitivity: empty list, nothing running.
   set_idle(false);
@@ -102,6 +112,7 @@ std::string InputBar::server1_url() const { return combo_text(ent_srv1_); }
 std::string InputBar::server2_url() const { return combo_text(ent_srv2_); }
 int         InputBar::max_concurrent() const { return static_cast<int>(spin_concurrent_.get_value()); }
 std::size_t InputBar::max_size_mb()    const { return static_cast<std::size_t>(spin_max_size_.get_value()); }
+bool        InputBar::ignore_server_host() const { return chk_ignore_host_.get_active(); }
 
 // ---------------------------------------------------------------------------
 // Sensitivity transitions
@@ -159,6 +170,7 @@ void InputBar::save_compare_inputs()
   save_combo(ent_srv2_, "server2");
   settings_.set_int("max_concurrent", max_concurrent());
   settings_.set_int("max_size_mb", static_cast<int>(max_size_mb()));
+  settings_.set_int("ignore_server_host", ignore_server_host() ? 1 : 0);
 }
 
 // ---------------------------------------------------------------------------

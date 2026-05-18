@@ -26,7 +26,8 @@ void CompareRunner::start(std::vector<QueryInfo> queries,
                           std::string server1_url,
                           std::string server2_url,
                           int max_concurrent,
-                          size_t max_size)
+                          size_t max_size,
+                          bool ignore_host)
 {
   stop();
 
@@ -39,7 +40,8 @@ void CompareRunner::start(std::vector<QueryInfo> queries,
                         std::move(server1_url),
                         std::move(server2_url),
                         std::max(1, max_concurrent),
-                        max_size);
+                        max_size,
+                        ignore_host);
 }
 
 void CompareRunner::request_stop()
@@ -80,6 +82,66 @@ void CompareRunner::on_dispatch()
   }
 }
 
+// ---------------------------------------------------------------------------
+// Host-normalization helpers
+// ---------------------------------------------------------------------------
+
+// Extract "host:port" (or just "host") from a URL like "http://host:port/path".
+static std::string extract_host_port(const std::string& url)
+{
+  const auto sep = url.find("://");
+  if (sep == std::string::npos) return {};
+  const auto host_start = sep + 3;
+  const auto path_start = url.find('/', host_start);
+  return url.substr(host_start,
+                    path_start == std::string::npos ? std::string::npos
+                                                    : path_start - host_start);
+}
+
+// Replace every non-overlapping occurrence of needle in s with repl.
+static std::string str_replace_all(std::string s,
+                                    const std::string& needle,
+                                    const std::string& repl)
+{
+  if (needle.empty()) return s;
+  std::string out;
+  out.reserve(s.size());
+  std::size_t pos = 0;
+  std::size_t found;
+  while ((found = s.find(needle, pos)) != std::string::npos)
+  {
+    out.append(s, pos, found - pos);
+    out += repl;
+    pos = found + needle.size();
+  }
+  out.append(s, pos);
+  return out;
+}
+
+// Replace all occurrences of the server's hostname (and hostname:port) in text
+// with "SERVER_HOST" so that host-only URL differences don't show as diffs.
+static std::string normalize_server_host(std::string text, const std::string& base_url)
+{
+  const std::string host_port = extract_host_port(base_url);
+  if (host_port.empty()) return text;
+
+  // Replace "host:port" first (more specific) before the bare-host pass.
+  text = str_replace_all(std::move(text), host_port, "SERVER_HOST");
+
+  // If base_url included a port, also replace the bare host without port.
+  const auto colon = host_port.find(':');
+  if (colon != std::string::npos)
+  {
+    const std::string host_only = host_port.substr(0, colon);
+    if (!host_only.empty())
+      text = str_replace_all(std::move(text), host_only, "SERVER_HOST");
+  }
+
+  return text;
+}
+
+// ---------------------------------------------------------------------------
+
 // Ensure server_url ends without a slash so that
 // server_url + request_string (which starts with /) is well-formed.
 static std::string normalize_base(const std::string& url)
@@ -93,7 +155,8 @@ void CompareRunner::worker(std::vector<QueryInfo> queries,
                            std::string server1_url,
                            std::string server2_url,
                            int max_concurrent,
-                           size_t max_size)
+                           size_t max_size,
+                           bool ignore_host)
 {
   const std::string base1 = normalize_base(server1_url);
   const std::string base2 = normalize_base(server2_url);
@@ -216,15 +279,33 @@ void CompareRunner::worker(std::vector<QueryInfo> queries,
         {
           auto [fmt1, ferr1] = format_for_diff(result.kind1, result.body1);
           auto [fmt2, ferr2] = format_for_diff(result.kind2, result.body2);
+
           result.formatted1 = std::move(fmt1);
           result.formatted2 = std::move(fmt2);
 
           if (!ferr1.empty()) result.error1 = ferr1;
           if (!ferr2.empty()) result.error2 = ferr2;
 
+          if (ignore_host)
+          {
+            result.host_port1 = extract_host_port(base1);
+            result.host_port2 = extract_host_port(base2);
+          }
+
           const bool use_text = !result.formatted1.empty() || !result.formatted2.empty();
-          const bool equal = use_text ? (result.formatted1 == result.formatted2)
-                                      : (result.body1 == result.body2);
+          bool equal;
+          if (use_text && ignore_host)
+          {
+            // Equality check on normalized copies so host-URL-only differences
+            // are treated as equal without altering the displayed text.
+            equal = normalize_server_host(result.formatted1, base1) ==
+                    normalize_server_host(result.formatted2, base2);
+          }
+          else
+          {
+            equal = use_text ? (result.formatted1 == result.formatted2)
+                             : (result.body1 == result.body2);
+          }
           result.status = equal ? CompareStatus::EQUAL : CompareStatus::DIFFERENT;
         }
       }

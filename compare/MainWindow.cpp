@@ -306,7 +306,8 @@ void MainWindow::on_compare_requested()
 
   runner_.start(queries_, srv1, srv2,
                 input_bar_.max_concurrent(),
-                input_bar_.max_size_mb() * 1024 * 1024);
+                input_bar_.max_size_mb() * 1024 * 1024,
+                input_bar_.ignore_server_host());
 }
 
 void MainWindow::on_rerun_filtered_requested()

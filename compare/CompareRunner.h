@@ -37,11 +37,15 @@ class CompareRunner
 
   // Start processing.  Any previous run is stopped first.
   // max_concurrent limits how many queries are in flight simultaneously.
+  // ignore_host: replace each server's hostname (with/without port) in
+  // formatted response text with a placeholder before comparing, so
+  // host-only URL differences do not count as content differences.
   void start(std::vector<QueryInfo> queries,
              std::string server1_url,
              std::string server2_url,
              int max_concurrent,
-             size_t max_size);
+             size_t max_size,
+             bool ignore_host = false);
 
   // Request early stop; blocks until the worker exits.
   void stop();
@@ -58,7 +62,8 @@ class CompareRunner
               std::string server1_url,
               std::string server2_url,
               int max_concurrent,
-              size_t max_size);
+              size_t max_size,
+              bool ignore_host);
 
   void on_dispatch();
 

@@ -41,13 +41,24 @@ class DiffView : public Gtk::Box
   // thread and consumed by apply_prepared() on the main thread.
   struct PreparedDiff;
 
+  // Character-span type used for host suppression.
+  using HostSpanList = std::vector<std::pair<std::size_t, std::size_t>>;
+
   // Run the line + paired-character SES computation.  Safe to call from a
   // background thread; poll `cancel_token.load()` and bail out early by
   // returning an empty shared_ptr.
+  //
+  // host_port1 / host_port2: when non-empty, paired DELETE/ADD lines that
+  // differ only in these host[:port] strings are marked "host-only" and
+  // rendered as context (no diff colour) in apply_prepared().  Character
+  // highlights within host spans are suppressed even when the pair has
+  // other real differences.
   static std::shared_ptr<PreparedDiff> compute_diff(
       const std::string& text1,
       const std::string& text2,
-      const std::atomic<bool>& cancel_token);
+      const std::atomic<bool>& cancel_token,
+      const std::string& host_port1 = {},
+      const std::string& host_port2 = {});
 
   // Apply a PreparedDiff to the two panes.  Main-thread only.  Passing a
   // null pointer clears the panes.

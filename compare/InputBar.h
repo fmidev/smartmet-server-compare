@@ -3,6 +3,7 @@
 
 #include <gtkmm/box.h>
 #include <gtkmm/button.h>
+#include <gtkmm/checkbutton.h>
 #include <gtkmm/comboboxtext.h>
 #include <gtkmm/label.h>
 #include <gtkmm/spinbutton.h>
@@ -13,9 +14,10 @@
 #include <string>
 
 /**
- * Two-row input panel above the request list:
+ * Three-row input panel above the request list:
  *   Row 1: source URL, prefix filter, minutes, [Fetch queries] [Load from file]
  *   Row 2: server1, server2, max concurrent, max size, [Compare all] [Stop]
+ *   Row 3: normalization options (ignore server host in response URLs, …)
  *
  * Reads initial values from `settings` at construction time and writes them
  * back when the user triggers fetch / compare (so the next launch remembers
@@ -37,6 +39,7 @@ class InputBar : public Gtk::Box
   std::string server2_url() const;
   int         max_concurrent() const;
   std::size_t max_size_mb()    const;
+  bool        ignore_server_host() const;
 
   // ----- Button-state transitions -----
   // Idle = nothing running; compare button enabled iff we have queries to run.
@@ -106,6 +109,10 @@ class InputBar : public Gtk::Box
   Gtk::Button btn_compare_{"Compare all"};
   Gtk::Button btn_rerun_filtered_{"Rerun filtered"};
   Gtk::Button btn_stop_{"Stop"};
+
+  // Row 3: normalization options
+  Gtk::Box         row3_{Gtk::ORIENTATION_HORIZONTAL, 6};
+  Gtk::CheckButton chk_ignore_host_{"Ignore server host in response URLs"};
 
   sigc::signal<void()> sig_fetch_;
   sigc::signal<void()> sig_load_;

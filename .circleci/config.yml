@@ -13,7 +13,10 @@ jobs:
           command: ci-build deps
       - run:
           name: Build RPM
-          command: ci-build rpm
+          command: |
+            ./autogen.sh
+            ./configure
+            ci-build rpm
       - persist_to_workspace:
           root: /dist
           paths: ./*.rpm
@@ -30,7 +33,10 @@ jobs:
           command: ci-build deps
       - run:
           name: Build RPM
-          command: ci-build rpm
+          command: |
+            ./autogen.sh
+            ./configure
+            ci-build rpm
       - persist_to_workspace:
           root: /dist
           paths: ./*.rpm

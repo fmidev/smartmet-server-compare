@@ -13,6 +13,7 @@ BuildRoot: %{_tmppath}/%{name}-%{version}-%{release}-root-%(%{__id_u} -n)
 BuildRequires: rpm-build
 BuildRequires: autoconf
 BuildRequires: automake
+BuildRequires: dtl
 BuildRequires: gcc-c++
 BuildRequires: make
 BuildRequires: tinyxml2-devel

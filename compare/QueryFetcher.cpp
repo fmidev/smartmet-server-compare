@@ -4,6 +4,7 @@
 #include <json/json.h>
 
 #include <fstream>
+#include <optional>
 #include <regex>
 #include <string>
 #include <unordered_set>
@@ -58,11 +59,24 @@ std::pair<std::vector<QueryInfo>, std::string> QueryFetcher::fetch(const std::st
     if (!j.isArray())
       return {{}, "Expected a JSON array from /admin?what=lastrequests"};
 
+    std::optional<std::string> request_member;
+
     std::unordered_set<std::string> seen;
     for (const auto& item : j)
     {
-      std::string rs = item.isMember("RequestString") && item["RequestString"].isString()
-                       ? item["RequestString"].asString() : "";
+      if (!item.isObject())
+        continue;
+      if (!request_member)
+      {
+        if (item.isMember("RequestString"))
+          request_member = "RequestString";
+        else if (item.isMember("URL"))
+          request_member = "URL";
+        else
+          return {{}, "JSON objects do not contain 'RequestString' or 'URL' members"};
+      }
+      std::string rs = request_member && item.isMember(*request_member) && item[*request_member].isString()
+                       ? item[*request_member].asString() : "";
       if (rs.empty())
         continue;
       if (!prefix.empty() && rs.substr(0, prefix.size()) != prefix)

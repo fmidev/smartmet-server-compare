@@ -2,8 +2,8 @@
 %define SPECNAME smartmet-server-compare
 
 Name: %{SPECNAME}
-Version: 26.5.5
-Release: 2%{?dist}.fmi
+Version: 26.7.15
+Release: 1%{?dist}.fmi
 Summary: SmartMet Server comparison tool
 License: MIT
 URL: https://github.com/fmidev/smartmet-server-compare
@@ -59,6 +59,9 @@ rm -rf $RPM_BUILD_ROOT
 %{_bindir}/smartmet-server-compare
 
 %changelog
+* Wed Jul 15 2026 Andris Pavēnis <andris.pavenis@fmi.fi> 26.7.15-1.fmi
+- QueryFetcher.cpp: adapt to change in lastrequests response format
+
 * Tue May 5 2026 Andris Pavenis <andris.pavenis@fmi.fi> 26.5.5-2.fmi
 - Added HTTP status filter
 

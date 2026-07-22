@@ -267,10 +267,11 @@ void CompareRunner::worker(std::vector<QueryInfo> queries,
                 //
                 // The pixels are not identical (PSNR is finite), so this is
                 // never reported as EQUAL: a significant change is DIFFERENT,
-                // otherwise TEXT_DIFF (text/anti-aliasing jitter only).
+                // otherwise MINOR_DIFF (anti-aliasing / edge-rendering jitter
+                // only — e.g. text edges or filled-contour boundaries).
                 result.image_diff = structural_image_diff(result.body1, result.body2);
                 result.status = result.image_diff.differs ? CompareStatus::DIFFERENT
-                                                          : CompareStatus::TEXT_DIFF;
+                                                          : CompareStatus::MINOR_DIFF;
               }
             }
             catch (const std::exception& e)

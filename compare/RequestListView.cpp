@@ -369,9 +369,9 @@ bool RequestListView::filter_func(const Gtk::TreeModel::const_iterator& iter)
     case 1:  // Equal
       if (raw_status != CompareStatus::EQUAL) return false;
       break;
-    case 2:  // Different — both significant and text/AA-only tiers
+    case 2:  // Different — both significant and minor (AA/edge-only) tiers
       if (raw_status != CompareStatus::DIFFERENT &&
-          raw_status != CompareStatus::TEXT_DIFF) return false;
+          raw_status != CompareStatus::MINOR_DIFF) return false;
       break;
     case 3:  // Error
       if (raw_status != CompareStatus::ERROR &&
@@ -491,7 +491,7 @@ Glib::ustring RequestListView::status_text(CompareStatus s)
     case CompareStatus::RUNNING:   return "QUERYING";
     case CompareStatus::EQUAL:     return "EQUAL";
     case CompareStatus::DIFFERENT: return "DIFF";
-    case CompareStatus::TEXT_DIFF: return "TEXT";
+    case CompareStatus::MINOR_DIFF: return "MINOR";
     case CompareStatus::ERROR:     return "ERROR";
     case CompareStatus::TOO_LARGE: return "TOO_LARGE";
   }
@@ -499,8 +499,8 @@ Glib::ustring RequestListView::status_text(CompareStatus s)
 }
 
 // Pango markup for the Status cell.  Significant image differences are red and
-// bold so they jump out; text/anti-aliasing-only differences are amber (a
-// caution, not an alarm); everything else uses the default theme color.  The
+// bold so they jump out; minor anti-aliasing / edge-only differences are amber
+// (a caution, not an alarm); everything else uses the default theme color.  The
 // two hex colors are chosen to stay legible on both light and dark Adwaita.
 Glib::ustring RequestListView::status_markup(CompareStatus s)
 {
@@ -508,8 +508,8 @@ Glib::ustring RequestListView::status_markup(CompareStatus s)
   {
     case CompareStatus::DIFFERENT:
       return "<span foreground=\"#c01c28\" weight=\"bold\">DIFF</span>";
-    case CompareStatus::TEXT_DIFF:
-      return "<span foreground=\"#e66100\">TEXT</span>";
+    case CompareStatus::MINOR_DIFF:
+      return "<span foreground=\"#e66100\">MINOR</span>";
     default:
       return status_text(s);
   }

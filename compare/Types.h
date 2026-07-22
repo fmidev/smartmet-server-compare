@@ -5,11 +5,13 @@
 #include <string>
 #include <vector>
 
-// TEXT_DIFF: images are not pixel-identical, but the structural diff found only
-// text/symbol anti-aliasing jitter (no significant clustered change).  Kept
-// distinct from EQUAL (they *do* differ) and from DIFFERENT (the difference is
-// not significant).  Appended last so existing values keep their int codes.
-enum class CompareStatus { PENDING, RUNNING, EQUAL, DIFFERENT, ERROR, TOO_LARGE, TEXT_DIFF };
+// MINOR_DIFF: images are not pixel-identical, but the structural diff found
+// only anti-aliasing / edge-rendering jitter (no significant clustered change)
+// — e.g. text/symbol edges or filled-contour boundaries rendered slightly
+// differently between servers.  Kept distinct from EQUAL (they *do* differ) and
+// from DIFFERENT (the difference is not significant).  Appended last so
+// existing values keep their int codes.
+enum class CompareStatus { PENDING, RUNNING, EQUAL, DIFFERENT, ERROR, TOO_LARGE, MINOR_DIFF };
 
 // Detected semantic content category.  Ordered roughly from most- to
 // least-specific so callers can compare with >=.

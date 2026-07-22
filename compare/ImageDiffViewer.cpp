@@ -220,7 +220,7 @@ void ImageDiffViewer::show(const CompareResult& result,
       }
       else
       {
-        oss << "text/anti-aliasing only";
+        oss << "anti-aliasing / edge rendering only";
         if (d.candidate_pixels > 0)
           oss << " (" << d.candidate_pixels
               << " px differ, no significant change)";

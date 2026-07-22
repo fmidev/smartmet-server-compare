@@ -373,21 +373,21 @@ void MainWindow::on_compare_done()
   input_bar_.set_idle(!queries_.empty());
   status_panel_.set_progress(1.0);
 
-  int equal = 0, textdiff = 0, diff = 0, err = 0;
+  int equal = 0, minordiff = 0, diff = 0, err = 0;
   for (const auto& r : results_)
   {
-    if (r.status == CompareStatus::EQUAL)          ++equal;
-    else if (r.status == CompareStatus::TEXT_DIFF) ++textdiff;
-    else if (r.status == CompareStatus::DIFFERENT) ++diff;
-    else if (r.status == CompareStatus::ERROR)     ++err;
+    if (r.status == CompareStatus::EQUAL)           ++equal;
+    else if (r.status == CompareStatus::MINOR_DIFF) ++minordiff;
+    else if (r.status == CompareStatus::DIFFERENT)  ++diff;
+    else if (r.status == CompareStatus::ERROR)      ++err;
   }
 
   std::string msg = "Done.  Equal: " + std::to_string(equal) +
                     "  Different: " + std::to_string(diff);
-  // Only surface the text/anti-aliasing-only tier when it actually occurred, so
-  // the common all-images-match case stays uncluttered.
-  if (textdiff > 0)
-    msg += "  Text-only: " + std::to_string(textdiff);
+  // Only surface the minor (anti-aliasing / edge-only) tier when it actually
+  // occurred, so the common all-images-match case stays uncluttered.
+  if (minordiff > 0)
+    msg += "  Minor: " + std::to_string(minordiff);
   msg += "  Error: " + std::to_string(err);
   status_panel_.set_status(msg);
 }

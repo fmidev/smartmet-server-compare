@@ -373,19 +373,22 @@ void MainWindow::on_compare_done()
   input_bar_.set_idle(!queries_.empty());
   status_panel_.set_progress(1.0);
 
-  int equal = 0, minordiff = 0, diff = 0, err = 0;
+  int equal = 0, minordiff = 0, checkdiff = 0, diff = 0, err = 0;
   for (const auto& r : results_)
   {
     if (r.status == CompareStatus::EQUAL)           ++equal;
     else if (r.status == CompareStatus::MINOR_DIFF) ++minordiff;
+    else if (r.status == CompareStatus::CHECK_DIFF) ++checkdiff;
     else if (r.status == CompareStatus::DIFFERENT)  ++diff;
     else if (r.status == CompareStatus::ERROR)      ++err;
   }
 
   std::string msg = "Done.  Equal: " + std::to_string(equal) +
                     "  Different: " + std::to_string(diff);
-  // Only surface the minor (anti-aliasing / edge-only) tier when it actually
-  // occurred, so the common all-images-match case stays uncluttered.
+  // Only surface the check/minor tiers when they actually occurred, so the
+  // common all-images-match case stays uncluttered.
+  if (checkdiff > 0)
+    msg += "  Check: " + std::to_string(checkdiff);
   if (minordiff > 0)
     msg += "  Minor: " + std::to_string(minordiff);
   msg += "  Error: " + std::to_string(err);

@@ -218,6 +218,15 @@ void ImageDiffViewer::show(const CompareResult& result,
               << (d.cluster_count == 1 ? "" : "s") << ", largest "
               << d.largest_cluster_area << " px)";
       }
+      else if (d.significant_pixels > 0)
+      {
+        // Solid non-AA clusters below the "significant" bar — the signature of
+        // a small content change such as a changed label/value or symbol.
+        oss << "check — possible label/value change ("
+            << d.cluster_count << " solid cluster"
+            << (d.cluster_count == 1 ? "" : "s") << ", largest "
+            << d.largest_cluster_area << " px, no anti-aliasing)";
+      }
       else
       {
         oss << "anti-aliasing / edge rendering only";

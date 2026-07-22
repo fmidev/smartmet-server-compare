@@ -369,8 +369,10 @@ bool RequestListView::filter_func(const Gtk::TreeModel::const_iterator& iter)
     case 1:  // Equal
       if (raw_status != CompareStatus::EQUAL) return false;
       break;
-    case 2:  // Different — both significant and minor (AA/edge-only) tiers
+    case 2:  // Different — every non-identical image tier (significant, check,
+             // and minor AA/edge-only)
       if (raw_status != CompareStatus::DIFFERENT &&
+          raw_status != CompareStatus::CHECK_DIFF &&
           raw_status != CompareStatus::MINOR_DIFF) return false;
       break;
     case 3:  // Error
@@ -492,6 +494,7 @@ Glib::ustring RequestListView::status_text(CompareStatus s)
     case CompareStatus::EQUAL:     return "EQUAL";
     case CompareStatus::DIFFERENT: return "DIFF";
     case CompareStatus::MINOR_DIFF: return "MINOR";
+    case CompareStatus::CHECK_DIFF: return "CHECK";
     case CompareStatus::ERROR:     return "ERROR";
     case CompareStatus::TOO_LARGE: return "TOO_LARGE";
   }
@@ -499,15 +502,19 @@ Glib::ustring RequestListView::status_text(CompareStatus s)
 }
 
 // Pango markup for the Status cell.  Significant image differences are red and
-// bold so they jump out; minor anti-aliasing / edge-only differences are amber
-// (a caution, not an alarm); everything else uses the default theme color.  The
-// two hex colors are chosen to stay legible on both light and dark Adwaita.
+// bold so they jump out; a CHECK (small solid change — possibly a changed
+// label/value) is magenta to invite a look; minor anti-aliasing / edge-only
+// differences are amber (a caution, not an alarm); everything else uses the
+// default theme color.  Hex colors are chosen to stay legible on both light and
+// dark Adwaita.
 Glib::ustring RequestListView::status_markup(CompareStatus s)
 {
   switch (s)
   {
     case CompareStatus::DIFFERENT:
       return "<span foreground=\"#c01c28\" weight=\"bold\">DIFF</span>";
+    case CompareStatus::CHECK_DIFF:
+      return "<span foreground=\"#9141ac\" weight=\"bold\">CHECK</span>";
     case CompareStatus::MINOR_DIFF:
       return "<span foreground=\"#e66100\">MINOR</span>";
     default:

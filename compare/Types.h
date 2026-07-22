@@ -5,13 +5,22 @@
 #include <string>
 #include <vector>
 
-// MINOR_DIFF: images are not pixel-identical, but the structural diff found
-// only anti-aliasing / edge-rendering jitter (no significant clustered change)
-// — e.g. text/symbol edges or filled-contour boundaries rendered slightly
-// differently between servers.  Kept distinct from EQUAL (they *do* differ) and
-// from DIFFERENT (the difference is not significant).  Appended last so
-// existing values keep their int codes.
-enum class CompareStatus { PENDING, RUNNING, EQUAL, DIFFERENT, ERROR, TOO_LARGE, MINOR_DIFF };
+// Image-difference tiers between EQUAL and DIFFERENT (all appended last so
+// existing int codes are preserved):
+//
+//   MINOR_DIFF  Not pixel-identical, but the structural diff found only
+//               anti-aliasing / edge-rendering jitter — no solid, non-edge
+//               cluster at all.  E.g. same text/symbols or filled-contour
+//               boundaries rendered slightly differently between servers.
+//               Effectively harmless.
+//
+//   CHECK_DIFF  Solid, non-anti-aliasing cluster(s) present but all below the
+//               "significant" area bar.  This is the signature of a small
+//               content change the AA detector does NOT absorb — most often a
+//               changed label/value (e.g. 7 -> 9) or symbol, but conceivably
+//               harmless cross-OS/freetype rendering.  Flagged for a human to
+//               eyeball; a true value change cannot be confirmed without OCR.
+enum class CompareStatus { PENDING, RUNNING, EQUAL, DIFFERENT, ERROR, TOO_LARGE, MINOR_DIFF, CHECK_DIFF };
 
 // Detected semantic content category.  Ordered roughly from most- to
 // least-specific so callers can compare with >=.

@@ -266,12 +266,24 @@ void CompareRunner::worker(std::vector<QueryInfo> queries,
                 // changes — and keep PSNR only as an informational figure.
                 //
                 // The pixels are not identical (PSNR is finite), so this is
-                // never reported as EQUAL: a significant change is DIFFERENT,
-                // otherwise MINOR_DIFF (anti-aliasing / edge-rendering jitter
-                // only — e.g. text edges or filled-contour boundaries).
-                result.image_diff = structural_image_diff(result.body1, result.body2);
-                result.status = result.image_diff.differs ? CompareStatus::DIFFERENT
-                                                          : CompareStatus::MINOR_DIFF;
+                // never reported as EQUAL.  Three tiers, from the structural
+                // diff's cluster geometry:
+                //   DIFFERENT  a significant clustered change (or AA flood /
+                //              size mismatch) — image_diff.differs
+                //   CHECK_DIFF solid, non-anti-aliasing cluster(s) present but
+                //              all below the significant bar — the signature of
+                //              a small content change (e.g. a changed
+                //              label/value) that edge jitter cannot explain
+                //   MINOR_DIFF only anti-aliasing / edge jitter, no solid
+                //              cluster at all — effectively harmless
+                const auto& d = result.image_diff =
+                    structural_image_diff(result.body1, result.body2);
+                if (d.differs)
+                  result.status = CompareStatus::DIFFERENT;
+                else if (d.significant_pixels > 0)
+                  result.status = CompareStatus::CHECK_DIFF;
+                else
+                  result.status = CompareStatus::MINOR_DIFF;
               }
             }
             catch (const std::exception& e)

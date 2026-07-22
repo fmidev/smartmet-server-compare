@@ -252,8 +252,26 @@ void CompareRunner::worker(std::vector<QueryInfo> queries,
               // Different bytes can still decode to identical pixels (e.g.
               // re-encoded PNGs).  Treat MSE=0 (PSNR=∞) as equal — the value
               // still shows in the list so the match is visible.
-              result.status = std::isinf(result.psnr) ? CompareStatus::EQUAL
-                                                      : CompareStatus::DIFFERENT;
+              if (std::isinf(result.psnr))
+              {
+                result.status = CompareStatus::EQUAL;
+              }
+              else
+              {
+                // A low PSNR alone doesn't mean the images differ significantly:
+                // WMS output is full of text and symbols whose anti-aliasing /
+                // font rendering differs harmlessly between servers, dragging
+                // PSNR down.  Judge on the structural diff — which tolerates
+                // that per-edge jitter but still catches clustered, solid
+                // changes — and keep PSNR only as an informational figure.
+                //
+                // The pixels are not identical (PSNR is finite), so this is
+                // never reported as EQUAL: a significant change is DIFFERENT,
+                // otherwise TEXT_DIFF (text/anti-aliasing jitter only).
+                result.image_diff = structural_image_diff(result.body1, result.body2);
+                result.status = result.image_diff.differs ? CompareStatus::DIFFERENT
+                                                          : CompareStatus::TEXT_DIFF;
+              }
             }
             catch (const std::exception& e)
             {

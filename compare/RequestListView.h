@@ -82,6 +82,7 @@ class RequestListView : public Gtk::Box
   }
 
   static Glib::ustring status_text(CompareStatus s);
+  static Glib::ustring status_markup(CompareStatus s);
 
  private:
   void on_selection_changed_internal();

@@ -1,9 +1,15 @@
 #pragma once
+#include "ImageCompare.h"
+
 #include <cmath>
 #include <string>
 #include <vector>
 
-enum class CompareStatus { PENDING, RUNNING, EQUAL, DIFFERENT, ERROR, TOO_LARGE };
+// TEXT_DIFF: images are not pixel-identical, but the structural diff found only
+// text/symbol anti-aliasing jitter (no significant clustered change).  Kept
+// distinct from EQUAL (they *do* differ) and from DIFFERENT (the difference is
+// not significant).  Appended last so existing values keep their int codes.
+enum class CompareStatus { PENDING, RUNNING, EQUAL, DIFFERENT, ERROR, TOO_LARGE, TEXT_DIFF };
 
 // Detected semantic content category.  Ordered roughly from most- to
 // least-specific so callers can compare with >=.
@@ -74,6 +80,12 @@ struct CompareResult
 
   // Image comparison metric: NaN = not computed, +inf = identical images.
   double psnr = std::numeric_limits<double>::quiet_NaN();
+
+  // Structural (anti-aliasing-aware) image-diff summary.  Populated when both
+  // sides are images that decode to non-identical pixels; its `differs` verdict
+  // (not PSNR) drives the EQUAL/DIFFERENT status so that text/symbol rendering
+  // jitter is not reported as a difference.  `computed` is false otherwise.
+  ImageDiffResult image_diff;
 
   // Non-empty when "Ignore server host in response URLs" is active.
   // Each is the "host[:port]" portion of the respective server URL.

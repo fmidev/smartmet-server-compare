@@ -78,7 +78,8 @@ RequestListView::RequestListView()
   auto* col_status = Gtk::manage(new Gtk::TreeViewColumn("Status"));
   auto* rend_status = Gtk::manage(new Gtk::CellRendererText());
   col_status->pack_start(*rend_status);
-  col_status->add_attribute(rend_status->property_text(), columns_.col_status);
+  // Bind to markup (not plain text) so the Status cell can be colored per tier.
+  col_status->add_attribute(rend_status->property_markup(), columns_.col_status);
   col_status->set_min_width(80);
   view_.append_column(*col_status);
 
@@ -260,7 +261,7 @@ void RequestListView::update_status(const CompareResult& result)
   {
     if (row[columns_.col_index] == result.index)
     {
-      row[columns_.col_status]     = status_text(result.status);
+      row[columns_.col_status]     = status_markup(result.status);
       row[columns_.col_http]       = format_http_pair(result.status_code1,
                                                        result.status_code2);
       row[columns_.col_psnr]       = format_psnr(result.psnr);
@@ -368,8 +369,9 @@ bool RequestListView::filter_func(const Gtk::TreeModel::const_iterator& iter)
     case 1:  // Equal
       if (raw_status != CompareStatus::EQUAL) return false;
       break;
-    case 2:  // Different
-      if (raw_status != CompareStatus::DIFFERENT) return false;
+    case 2:  // Different — both significant and text/AA-only tiers
+      if (raw_status != CompareStatus::DIFFERENT &&
+          raw_status != CompareStatus::TEXT_DIFF) return false;
       break;
     case 3:  // Error
       if (raw_status != CompareStatus::ERROR &&
@@ -489,8 +491,26 @@ Glib::ustring RequestListView::status_text(CompareStatus s)
     case CompareStatus::RUNNING:   return "QUERYING";
     case CompareStatus::EQUAL:     return "EQUAL";
     case CompareStatus::DIFFERENT: return "DIFF";
+    case CompareStatus::TEXT_DIFF: return "TEXT";
     case CompareStatus::ERROR:     return "ERROR";
     case CompareStatus::TOO_LARGE: return "TOO_LARGE";
   }
   return "?";
+}
+
+// Pango markup for the Status cell.  Significant image differences are red and
+// bold so they jump out; text/anti-aliasing-only differences are amber (a
+// caution, not an alarm); everything else uses the default theme color.  The
+// two hex colors are chosen to stay legible on both light and dark Adwaita.
+Glib::ustring RequestListView::status_markup(CompareStatus s)
+{
+  switch (s)
+  {
+    case CompareStatus::DIFFERENT:
+      return "<span foreground=\"#c01c28\" weight=\"bold\">DIFF</span>";
+    case CompareStatus::TEXT_DIFF:
+      return "<span foreground=\"#e66100\">TEXT</span>";
+    default:
+      return status_text(s);
+  }
 }

@@ -46,7 +46,8 @@ All source lives in `compare/`:
   `QueryFetcher` (async log fetch).
 - **Helpers**: `HttpClient` (parallel HTTP/HTTPS via libcurl),
   `ContentHandler` (content-type detection + formatting),
-  `ImageCompare` (PSNR + diff image via Magick++),
+  `ImageCompare` (PSNR + structural anti-aliasing-aware diff — ported from
+  smartmet-library-regression, no dependency on it — + diff image via Magick++),
   `UrlUtils`, `Settings` (JSON persistence in
   `~/.local/share/smartmet-server-compare/history.json`), `Types.h`.
 

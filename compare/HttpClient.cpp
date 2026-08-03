@@ -153,9 +153,58 @@ static int progress_cb(void* clientp, curl_off_t, curl_off_t, curl_off_t, curl_o
   return stopped->load() ? 1 : 0;  // non-zero aborts the transfer
 }
 
+// Errors a server can produce by closing a persistent connection underneath the
+// client.  These say "the connection went away", as opposed to "the server
+// refused me" or "the name does not resolve", which a retry would not fix.
+static bool is_dropped_connection(CURLcode code)
+{
+  switch (code)
+  {
+    case CURLE_GOT_NOTHING:   // closed before any response byte arrived
+    case CURLE_RECV_ERROR:    // reset while reading the response
+    case CURLE_SEND_ERROR:    // reset while writing the request
+    case CURLE_PARTIAL_FILE:  // closed after part of the body
+      return true;
+    default:
+      return false;
+  }
+}
+
 void HttpClient::execute()
 {
   stopped_ = false;
+
+  std::vector<std::string> ids;
+  ids.reserve(requests_.size());
+  for (const auto& [id, req] : requests_)
+    ids.push_back(id);
+
+  const std::vector<std::string> retry = perform(ids, /*fresh_connect=*/false);
+
+  // A server may close a persistent connection at any time, and the client has
+  // no way to tell a connection that is about to be closed from a live one --
+  // it finds out only when the request it has just written goes unanswered.
+  // libcurl retries on its own while nothing has been received yet, but not
+  // once part of a response has arrived, so a server dropping a reused
+  // connection surfaces as a hard error ("Transferred a partial file", "Recv
+  // failure: Connection reset by peer", ...).
+  //
+  // Retry those on a forced-fresh connection.  Only requests that actually
+  // travelled over a cached connection qualify, so a server that is genuinely
+  // down is not contacted twice, and every request here is a GET, so repeating
+  // one cannot repeat a side effect.
+  if (!retry.empty() && !stopped_)
+  {
+    for (const auto& id : retry)
+      requests_[id].resp = Response{};
+    perform(retry, /*fresh_connect=*/true);
+  }
+}
+
+std::vector<std::string> HttpClient::perform(const std::vector<std::string>& ids,
+                                             bool fresh_connect)
+{
+  std::vector<std::string> retryable;
 
   // With keep-alive the multi handle (and thus its connection cache) outlives
   // this HttpClient; without it, a private handle is created and destroyed per
@@ -167,8 +216,10 @@ void HttpClient::execute()
   // Create one easy handle per request
   std::map<CURL*, std::string> handle_to_id;
 
-  for (auto& [id, req] : requests_)
+  for (const auto& id : ids)
   {
+    auto& req = requests_[id];
+
     CURL* easy = curl_easy_init();
     if (!easy)
       continue;
@@ -200,6 +251,12 @@ void HttpClient::execute()
       // but this also makes libcurl announce "Connection: close" so the server
       // is told not to hold the socket open on its side either.
       curl_easy_setopt(easy, CURLOPT_FORBID_REUSE, 1L);
+    }
+    else if (fresh_connect)
+    {
+      // Retry of a request whose cached connection the server dropped: skip the
+      // cache entirely.  The new connection is still kept for later requests.
+      curl_easy_setopt(easy, CURLOPT_FRESH_CONNECT, 1L);
     }
 
     curl_multi_add_handle(multi, easy);
@@ -233,17 +290,31 @@ void HttpClient::execute()
     auto& resp = requests_[it->second].resp;
 
     // CURLINFO_NUM_CONNECTS counts the connections libcurl had to *create* for
-    // this transfer, so zero means an existing one was reused.
+    // this transfer, so zero means it went over one that was already cached.
     long connects = 0;
-    if (curl_easy_getinfo(easy, CURLINFO_NUM_CONNECTS, &connects) == CURLE_OK)
-      resp.connection_reused = keep_alive_ && connects == 0;
+    const bool have_connects =
+        curl_easy_getinfo(easy, CURLINFO_NUM_CONNECTS, &connects) == CURLE_OK;
+    const bool used_cached_connection = have_connects && connects == 0;
 
     if (msg->data.result != CURLE_OK)
     {
       resp.error = curl_easy_strerror(msg->data.result);
+
+      // Only a failure on a connection we took from the cache is a candidate
+      // for the fresh-connection retry.  A failure on a connection libcurl had
+      // just opened is a real problem with the server, not a dropped keep-alive
+      // (and libcurl has already done its own retry by then, which is why this
+      // does not loop).
+      if (keep_alive_ && !fresh_connect && used_cached_connection &&
+          is_dropped_connection(msg->data.result))
+      {
+        retryable.push_back(it->second);
+      }
     }
     else
     {
+      resp.connection_reused = keep_alive_ && used_cached_connection;
+
       long code = 0;
       curl_easy_getinfo(easy, CURLINFO_RESPONSE_CODE, &code);
       resp.status_code = static_cast<int>(code);
@@ -264,6 +335,8 @@ void HttpClient::execute()
   }
   if (!keep_alive_)
     curl_multi_cleanup(multi);
+
+  return retryable;
 }
 
 const HttpClient::Response& HttpClient::response(const std::string& id) const

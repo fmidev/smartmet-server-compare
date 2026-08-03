@@ -79,8 +79,27 @@ on — useful for confirming that the server under test really honours
 keep-alive.  Expect `m` minus (threads × servers), since the first
 request per thread and origin has to open its connection.
 
-A server that answers `Connection: close` transparently falls back to
-one connection per request; no client change is needed.
+A server that answers `Connection: close` — including an older
+smartmet-server, which replies `HTTP/1.0` with no `Connection` header at
+all — is never cached in the first place, so mixing a keep-alive server
+and a non-keep-alive one in the same comparison works unchanged.
+
+### Recovering from a dropped connection
+
+A server may close a persistent connection at any moment and the client
+cannot tell a connection that is about to close from a live one; it finds
+out only when the request it just wrote goes unanswered.  libcurl retries
+by itself while nothing has been received yet, but *not* once part of a
+response has arrived — so a server dropping a reused connection
+mid-response surfaces as a hard error (`Transferred a partial file`,
+`Recv failure: Connection reset by peer`, `Server returned nothing`).
+
+`HttpClient::execute()` therefore runs `perform()` twice: any request
+that (a) went over a connection taken from the cache and (b) failed with
+one of those errors is retried once with `CURLOPT_FRESH_CONNECT`.  A
+failure on a connection libcurl had just opened is a real server problem
+and is reported as-is, which also means the retry cannot loop.  Every
+request is a GET, so repeating one is safe.
 
 ## Conventions
 

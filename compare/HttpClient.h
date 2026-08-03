@@ -2,6 +2,7 @@
 #include <atomic>
 #include <map>
 #include <string>
+#include <vector>
 
 /**
  * Simple parallel HTTP/HTTPS client using libcurl.
@@ -67,6 +68,11 @@ class HttpClient
   static void close_idle_connections();
 
  private:
+  // Run the given request ids and return the ids that failed in a way that a
+  // fresh connection could fix.  With fresh_connect the transfers are forced
+  // onto brand new connections and nothing is proposed for another retry.
+  std::vector<std::string> perform(const std::vector<std::string>& ids, bool fresh_connect);
+
   int timeout_sec_;
   bool keep_alive_;
   std::atomic<bool> stopped_{false};

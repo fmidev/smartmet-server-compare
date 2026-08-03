@@ -81,7 +81,14 @@ InputBar::InputBar(Settings& settings)
       "Replace each server's hostname (with and without port) in response "
       "bodies with a placeholder before comparing, so host-only URL "
       "differences do not count as content differences.");
+  chk_keep_alive_.set_tooltip_text(
+      "Send all queries of a run over persistent connections instead of opening "
+      "a new one per query. Much faster against HTTPS servers, and it exercises "
+      "the server's keep-alive handling. Requires a server that supports it; "
+      "one that answers \"Connection: close\" simply gets a new connection each "
+      "time, as before.");
   row3_.pack_start(chk_ignore_host_, false, false);
+  row3_.pack_start(chk_keep_alive_, false, false);
 
   pack_start(row1_, false, false);
   pack_start(row2_, false, false);
@@ -96,6 +103,7 @@ InputBar::InputBar(Settings& settings)
   spin_concurrent_.set_value(settings_.get_int("max_concurrent", 4));
   spin_max_size_.set_value(settings_.get_int("max_size_mb", 10));
   chk_ignore_host_.set_active(settings_.get_int("ignore_server_host", 0) != 0);
+  chk_keep_alive_.set_active(settings_.get_int("keep_alive", 0) != 0);
 
   // Initial sensitivity: empty list, nothing running.
   set_idle(false);
@@ -113,6 +121,7 @@ std::string InputBar::server2_url() const { return combo_text(ent_srv2_); }
 int         InputBar::max_concurrent() const { return static_cast<int>(spin_concurrent_.get_value()); }
 std::size_t InputBar::max_size_mb()    const { return static_cast<std::size_t>(spin_max_size_.get_value()); }
 bool        InputBar::ignore_server_host() const { return chk_ignore_host_.get_active(); }
+bool        InputBar::keep_alive() const { return chk_keep_alive_.get_active(); }
 
 // ---------------------------------------------------------------------------
 // Sensitivity transitions
@@ -171,6 +180,7 @@ void InputBar::save_compare_inputs()
   settings_.set_int("max_concurrent", max_concurrent());
   settings_.set_int("max_size_mb", static_cast<int>(max_size_mb()));
   settings_.set_int("ignore_server_host", ignore_server_host() ? 1 : 0);
+  settings_.set_int("keep_alive", keep_alive() ? 1 : 0);
 }
 
 // ---------------------------------------------------------------------------

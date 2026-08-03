@@ -45,7 +45,8 @@ class CompareRunner
              std::string server2_url,
              int max_concurrent,
              size_t max_size,
-             bool ignore_host = false);
+             bool ignore_host = false,
+             bool keep_alive = false);
 
   // Request early stop; blocks until the worker exits.
   void stop();
@@ -63,7 +64,8 @@ class CompareRunner
               std::string server2_url,
               int max_concurrent,
               size_t max_size,
-              bool ignore_host);
+              bool ignore_host,
+              bool keep_alive);
 
   void on_dispatch();
 

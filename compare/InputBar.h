@@ -40,6 +40,7 @@ class InputBar : public Gtk::Box
   int         max_concurrent() const;
   std::size_t max_size_mb()    const;
   bool        ignore_server_host() const;
+  bool        keep_alive() const;
 
   // ----- Button-state transitions -----
   // Idle = nothing running; compare button enabled iff we have queries to run.
@@ -113,6 +114,7 @@ class InputBar : public Gtk::Box
   // Row 3: normalization options
   Gtk::Box         row3_{Gtk::ORIENTATION_HORIZONTAL, 6};
   Gtk::CheckButton chk_ignore_host_{"Ignore server host in response URLs"};
+  Gtk::CheckButton chk_keep_alive_{"Reuse connections (HTTP keep-alive)"};
 
   sigc::signal<void()> sig_fetch_;
   sigc::signal<void()> sig_load_;

@@ -15,6 +15,13 @@
  *
  * All added requests are executed in parallel via curl_multi.
  * Thread-safe stop() can be called from another thread to abort.
+ *
+ * Persistent connections (HTTP keep-alive) are optional and off by default.
+ * When enabled, connections survive the HttpClient object and are reused by
+ * the next HttpClient created on the same thread, so a run of N queries costs
+ * one TCP (and TLS) handshake per server instead of N.  See execute() for why
+ * the cache is per thread.  Response::connection_reused reports, per request,
+ * whether an existing connection was actually picked up.
  */
 class HttpClient
 {
@@ -32,9 +39,14 @@ class HttpClient
     // "curl -v" style transcript of the exchange.
     std::string request_headers;
     std::string response_headers;
+
+    // True when this request travelled over a connection that was already
+    // open, i.e. the server honoured keep-alive and the client reused it.
+    // Always false when keep-alive is disabled.
+    bool connection_reused = false;
   };
 
-  explicit HttpClient(int timeout_sec = 60);
+  explicit HttpClient(int timeout_sec = 60, bool keep_alive = false);
 
   // Queue a GET request.
   void add(const std::string& id, const std::string& url);
@@ -49,8 +61,14 @@ class HttpClient
   // Retrieve the response for a given id (valid after execute() returns).
   const Response& response(const std::string& id) const;
 
+  // Drop every connection cached for the calling thread.  Only needed when a
+  // server is restarted underneath a long-lived worker thread; the cache is
+  // otherwise released automatically when the thread exits.
+  static void close_idle_connections();
+
  private:
   int timeout_sec_;
+  bool keep_alive_;
   std::atomic<bool> stopped_{false};
 
   struct Request

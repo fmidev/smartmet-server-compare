@@ -68,10 +68,71 @@ static std::string base_content_type(const char* ct)
 }
 
 // ---------------------------------------------------------------------------
+// Per-thread connection cache
+// ---------------------------------------------------------------------------
+
+// libcurl keeps its pool of live connections in the *multi* handle, not in the
+// easy handles: removing an easy handle returns its connection to the multi's
+// cache, where the next transfer to the same origin picks it up.  Creating a
+// fresh multi handle for every execute() therefore throws every connection
+// away no matter what the server says about keep-alive, which is what this
+// client did before the option existed.
+//
+// A CURLM handle is not thread safe, so the cache is thread_local rather than
+// global: each CompareRunner worker thread gets its own, no locking is needed
+// on the hot path, and curl_multi_cleanup() runs when the thread exits.  With
+// two target servers per thread the cache stays tiny.
+namespace
+{
+struct MultiHandleCache
+{
+  CURLM* handle = nullptr;
+
+  CURLM* get()
+  {
+    if (!handle)
+    {
+      handle = curl_multi_init();
+      if (handle)
+      {
+        // A worker thread only ever talks to the two servers under comparison;
+        // anything beyond a handful of cached connections is dead weight.
+        curl_multi_setopt(handle, CURLMOPT_MAXCONNECTS, 8L);
+      }
+    }
+    return handle;
+  }
+
+  void reset()
+  {
+    if (handle)
+    {
+      curl_multi_cleanup(handle);
+      handle = nullptr;
+    }
+  }
+
+  ~MultiHandleCache() { reset(); }
+};
+
+MultiHandleCache& thread_cache()
+{
+  static thread_local MultiHandleCache cache;
+  return cache;
+}
+}  // namespace
+
+void HttpClient::close_idle_connections()
+{
+  thread_cache().reset();
+}
+
+// ---------------------------------------------------------------------------
 // HttpClient
 // ---------------------------------------------------------------------------
 
-HttpClient::HttpClient(int timeout_sec) : timeout_sec_(timeout_sec)
+HttpClient::HttpClient(int timeout_sec, bool keep_alive)
+    : timeout_sec_(timeout_sec), keep_alive_(keep_alive)
 {
   ensure_curl_init();
 }
@@ -96,7 +157,10 @@ void HttpClient::execute()
 {
   stopped_ = false;
 
-  CURLM* multi = curl_multi_init();
+  // With keep-alive the multi handle (and thus its connection cache) outlives
+  // this HttpClient; without it, a private handle is created and destroyed per
+  // execute() so that no connection can survive.
+  CURLM* multi = keep_alive_ ? thread_cache().get() : curl_multi_init();
   if (!multi)
     throw std::runtime_error("curl_multi_init failed");
 
@@ -130,6 +194,14 @@ void HttpClient::execute()
     // Accept any encoding the server might use
     curl_easy_setopt(easy, CURLOPT_ACCEPT_ENCODING, "");
 
+    if (!keep_alive_)
+    {
+      // Belt and braces: the private multi handle is destroyed below anyway,
+      // but this also makes libcurl announce "Connection: close" so the server
+      // is told not to hold the socket open on its side either.
+      curl_easy_setopt(easy, CURLOPT_FORBID_REUSE, 1L);
+    }
+
     curl_multi_add_handle(multi, easy);
     handle_to_id[easy] = id;
   }
@@ -160,6 +232,12 @@ void HttpClient::execute()
 
     auto& resp = requests_[it->second].resp;
 
+    // CURLINFO_NUM_CONNECTS counts the connections libcurl had to *create* for
+    // this transfer, so zero means an existing one was reused.
+    long connects = 0;
+    if (curl_easy_getinfo(easy, CURLINFO_NUM_CONNECTS, &connects) == CURLE_OK)
+      resp.connection_reused = keep_alive_ && connects == 0;
+
     if (msg->data.result != CURLE_OK)
     {
       resp.error = curl_easy_strerror(msg->data.result);
@@ -176,13 +254,16 @@ void HttpClient::execute()
     }
   }
 
-  // Cleanup
+  // Cleanup.  Removing an easy handle hands its connection back to the multi
+  // handle's cache, so with keep-alive the connections stay open for the next
+  // execute() on this thread; without it the multi handle goes away with them.
   for (auto& [easy, id] : handle_to_id)
   {
     curl_multi_remove_handle(multi, easy);
     curl_easy_cleanup(easy);
   }
-  curl_multi_cleanup(multi);
+  if (!keep_alive_)
+    curl_multi_cleanup(multi);
 }
 
 const HttpClient::Response& HttpClient::response(const std::string& id) const

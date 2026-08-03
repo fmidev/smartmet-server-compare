@@ -98,6 +98,11 @@ struct CompareResult
   // jitter is not reported as a difference.  `computed` is false otherwise.
   ImageDiffResult image_diff;
 
+  // Number of the two requests (0-2) that travelled over an already open
+  // connection.  Always 0 when keep-alive is disabled; lets the UI show
+  // whether the servers actually honoured persistent connections.
+  int connections_reused = 0;
+
   // Non-empty when "Ignore server host in response URLs" is active.
   // Each is the "host[:port]" portion of the respective server URL.
   // DiffView uses these to treat host-URL-only differences as equal.

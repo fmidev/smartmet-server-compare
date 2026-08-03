@@ -27,7 +27,8 @@ void CompareRunner::start(std::vector<QueryInfo> queries,
                           std::string server2_url,
                           int max_concurrent,
                           size_t max_size,
-                          bool ignore_host)
+                          bool ignore_host,
+                          bool keep_alive)
 {
   stop();
 
@@ -41,7 +42,8 @@ void CompareRunner::start(std::vector<QueryInfo> queries,
                         std::move(server2_url),
                         std::max(1, max_concurrent),
                         max_size,
-                        ignore_host);
+                        ignore_host,
+                        keep_alive);
 }
 
 void CompareRunner::request_stop()
@@ -156,7 +158,8 @@ void CompareRunner::worker(std::vector<QueryInfo> queries,
                            std::string server2_url,
                            int max_concurrent,
                            size_t max_size,
-                           bool ignore_host)
+                           bool ignore_host,
+                           bool keep_alive)
 {
   const std::string base1 = normalize_base(server1_url);
   const std::string base2 = normalize_base(server2_url);
@@ -184,7 +187,7 @@ void CompareRunner::worker(std::vector<QueryInfo> queries,
       }
       dispatcher_.emit();
 
-      HttpClient client(60);
+      HttpClient client(60, keep_alive);
       client.add("s1", base1 + q.request_string);
       client.add("s2", base2 + q.request_string);
 
@@ -209,6 +212,8 @@ void CompareRunner::worker(std::vector<QueryInfo> queries,
       result.status_code2 = r2.status_code;
       result.error1 = r1.error;
       result.error2 = r2.error;
+      result.connections_reused =
+          (r1.connection_reused ? 1 : 0) + (r2.connection_reused ? 1 : 0);
 
       if (!result.error1.empty() || !result.error2.empty())
       {

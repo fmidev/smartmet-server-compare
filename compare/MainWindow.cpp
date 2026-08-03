@@ -307,7 +307,8 @@ void MainWindow::on_compare_requested()
   runner_.start(queries_, srv1, srv2,
                 input_bar_.max_concurrent(),
                 input_bar_.max_size_mb() * 1024 * 1024,
-                input_bar_.ignore_server_host());
+                input_bar_.ignore_server_host(),
+                input_bar_.keep_alive());
 }
 
 void MainWindow::on_rerun_filtered_requested()
@@ -374,8 +375,11 @@ void MainWindow::on_compare_done()
   status_panel_.set_progress(1.0);
 
   int equal = 0, minordiff = 0, checkdiff = 0, diff = 0, err = 0;
+  int reused = 0, requests = 0;
   for (const auto& r : results_)
   {
+    reused += r.connections_reused;
+    requests += 2;
     if (r.status == CompareStatus::EQUAL)           ++equal;
     else if (r.status == CompareStatus::MINOR_DIFF) ++minordiff;
     else if (r.status == CompareStatus::CHECK_DIFF) ++checkdiff;
@@ -392,6 +396,10 @@ void MainWindow::on_compare_done()
   if (minordiff > 0)
     msg += "  Minor: " + std::to_string(minordiff);
   msg += "  Error: " + std::to_string(err);
+  // Only when keep-alive was on, so the normal status line stays as it was.
+  if (input_bar_.keep_alive())
+    msg += "  Reused connections: " + std::to_string(reused) + "/" +
+           std::to_string(requests);
   status_panel_.set_status(msg);
 }
 

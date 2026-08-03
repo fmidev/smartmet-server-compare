@@ -44,12 +44,43 @@ All source lives in `compare/`:
   `add_viewer()`.
 - **Background workers**: `CompareRunner` (multi-threaded comparison),
   `QueryFetcher` (async log fetch).
-- **Helpers**: `HttpClient` (parallel HTTP/HTTPS via libcurl),
+- **Helpers**: `HttpClient` (parallel HTTP/HTTPS via libcurl, optional
+  persistent connections — see below),
   `ContentHandler` (content-type detection + formatting),
   `ImageCompare` (PSNR + structural anti-aliasing-aware diff — ported from
   smartmet-library-regression, no dependency on it — + diff image via Magick++),
   `UrlUtils`, `Settings` (JSON persistence in
   `~/.local/share/smartmet-server-compare/history.json`), `Types.h`.
+
+## Persistent connections (HTTP keep-alive)
+
+Off by default, toggled by the "Reuse connections (HTTP keep-alive)"
+checkbox in `InputBar` row 3 and persisted as the `keep_alive` setting.
+`MainWindow` passes it to `CompareRunner::start()`, which passes it to
+every `HttpClient` it constructs.
+
+libcurl keeps its pool of live connections in the **multi** handle, not
+in the easy handles: removing an easy handle returns its connection to
+the multi's cache, where the next transfer to the same origin picks it
+up.  `HttpClient::execute()` therefore creates a private multi handle
+per call when keep-alive is off (nothing survives) and uses a
+`thread_local` one when it is on.  Per thread rather than global,
+because a `CURLM` is not thread safe — each `CompareRunner` worker
+thread gets its own cache, needs no locking, and releases its
+connections via `curl_multi_cleanup()` when the thread exits at the end
+of a run.  `HttpClient::close_idle_connections()` drops them earlier if
+a server is restarted underneath a live worker.
+
+`Response::connection_reused` (from `CURLINFO_NUM_CONNECTS == 0`) says
+whether a request actually reused a connection.  `CompareRunner` sums it
+into `CompareResult::connections_reused`, and `MainWindow` appends
+"Reused connections: n/m" to the final status line when the option is
+on — useful for confirming that the server under test really honours
+keep-alive.  Expect `m` minus (threads × servers), since the first
+request per thread and origin has to open its connection.
+
+A server that answers `Connection: close` transparently falls back to
+one connection per request; no client change is needed.
 
 ## Conventions
 

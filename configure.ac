@@ -1,5 +1,5 @@
 AC_PREREQ([2.69])
-AC_INIT([smartmet-server-compare], [26.4.17], [andris.pavenis@fmi.fi])
+AC_INIT([smartmet-server-compare], [26.9.1], [andris.pavenis@fmi.fi])
 AC_CONFIG_SRCDIR([compare/main.cpp])
 AC_CONFIG_AUX_DIR([build-aux])
 AC_CONFIG_MACRO_DIR([m4])

@@ -77,6 +77,22 @@ their original index.
 itself changes (fetch, file load, query edit), since the indices would
 otherwise dangle.
 
+## Status-line statistics
+
+`MainWindow::update_status_line()` rewrites the status line from
+`collect_stats()` after every completed result, not just at the end, so
+the tally grows as the run proceeds:
+
+```
+Comparing filtered 12/57…  Equal: 8  Different: 3  Error: 1   |   All 500 — Equal: 300  Different: 150  Error: 50
+```
+
+The whole-list tally is appended only for a partial re-run that does not
+cover every row; "Not run: n" appears when some rows are still pending
+(a subset stopped early, or rows a partial run never touched).  The
+keep-alive "Reused connections" figure counts the current run's requests
+only.
+
 ## Persistent connections (HTTP keep-alive)
 
 Off by default, toggled by the "Reuse connections (HTTP keep-alive)"

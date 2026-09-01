@@ -68,6 +68,28 @@ class MainWindow : public Gtk::Window
   // reports the subset and the whole list separately.
   void start_compare(std::vector<int> indices, bool filtered);
 
+  // Tally of the CompareResult statuses over a set of rows.
+  struct Stats
+  {
+    int total = 0;      // rows examined
+    int done  = 0;      // rows with a final status (not PENDING/RUNNING)
+    int equal = 0;
+    int different = 0;
+    int check = 0;
+    int minor = 0;
+    int too_large = 0;
+    int error = 0;
+    int reused = 0;     // connections taken from the keep-alive pool
+    int requests = 0;   // requests behind `done` (two per row)
+  };
+
+  // Collect statistics over `indices`, or over every row when it is empty.
+  Stats collect_stats(const std::vector<int>& indices) const;
+
+  // Rewrite the status line from the current results.  Called after every
+  // incoming result while comparing, and once more when the run finishes.
+  void update_status_line(bool finished);
+
   // Orchestrate the asynchronous result-display pipeline: debounces rapid
   // selection changes, runs ResultPanel::prepare_async on a worker thread,
   // and posts the outcome back to the main loop via `show_dispatcher_`.

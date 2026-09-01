@@ -23,6 +23,11 @@ the complete set against a changed server pair — for instance first test
 against production, then two servers of the same production cluster
 against each other.
 
+While a comparison runs, the status line shows the running tally
+(`Comparing 120/500…  Equal: 100  Different: 15  Error: 5`).  For a
+partial re-run it shows the statistics of the re-run subset first and the
+statistics of the whole request list after a `|` separator.
+
 Sample screenshot of application:
 <img width="1912" height="1166" alt="image" src="doc/smartmet-server-compare-screenshot.png" />
 

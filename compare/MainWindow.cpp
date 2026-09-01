@@ -348,7 +348,7 @@ void MainWindow::start_compare(std::vector<int> indices, bool filtered)
   status_panel_.set_progress(0.0);
 
   input_bar_.start_comparing();
-  status_panel_.set_status(filtered ? "Comparing filtered queries…" : "Comparing…");
+  update_status_line(false);
 
   runner_.start(std::move(subset), run_indices_, srv1, srv2,
                 input_bar_.max_concurrent(),
@@ -378,6 +378,7 @@ void MainWindow::on_compare_result(CompareResult result)
   ++done_queries_;
   if (total_queries_ > 0)
     status_panel_.set_progress(static_cast<double>(done_queries_) / total_queries_);
+  update_status_line(false);
 
   if (list_view_.selected_index() == result.index)
     schedule_show(result.index, 0);
@@ -387,33 +388,98 @@ void MainWindow::on_compare_done()
 {
   input_bar_.set_idle(!queries_.empty());
   status_panel_.set_progress(1.0);
+  update_status_line(true);
+}
 
-  int equal = 0, minordiff = 0, checkdiff = 0, diff = 0, err = 0;
-  int reused = 0, requests = 0;
-  for (const auto& r : results_)
+// ---------------------------------------------------------------------------
+// Statistics / status line
+// ---------------------------------------------------------------------------
+
+MainWindow::Stats MainWindow::collect_stats(const std::vector<int>& indices) const
+{
+  Stats s;
+
+  auto account = [&s](const CompareResult& r)
   {
-    reused += r.connections_reused;
-    requests += 2;
-    if (r.status == CompareStatus::EQUAL)           ++equal;
-    else if (r.status == CompareStatus::MINOR_DIFF) ++minordiff;
-    else if (r.status == CompareStatus::CHECK_DIFF) ++checkdiff;
-    else if (r.status == CompareStatus::DIFFERENT)  ++diff;
-    else if (r.status == CompareStatus::ERROR)      ++err;
+    ++s.total;
+    switch (r.status)
+    {
+      case CompareStatus::PENDING:
+      case CompareStatus::RUNNING:
+        return;  // not finished — counted in `total` only
+      case CompareStatus::EQUAL:      ++s.equal;     break;
+      case CompareStatus::DIFFERENT:  ++s.different; break;
+      case CompareStatus::CHECK_DIFF: ++s.check;     break;
+      case CompareStatus::MINOR_DIFF: ++s.minor;     break;
+      case CompareStatus::TOO_LARGE:  ++s.too_large; break;
+      case CompareStatus::ERROR:      ++s.error;     break;
+    }
+    ++s.done;
+    s.reused   += r.connections_reused;
+    s.requests += 2;
+  };
+
+  if (indices.empty())
+  {
+    for (const auto& r : results_)
+      account(r);
+  }
+  else
+  {
+    for (int i : indices)
+      if (i >= 0 && i < static_cast<int>(results_.size()))
+        account(results_[i]);
+  }
+  return s;
+}
+
+void MainWindow::update_status_line(bool finished)
+{
+  // Render one tally.  The check / minor / too-large tiers appear only when
+  // they actually occurred, so the common case stays uncluttered.
+  // `with_pending` appends the not-yet-run count, which is redundant while a
+  // progress counter is already on screen.
+  auto fmt = [](const Stats& s, bool with_pending)
+  {
+    std::string m = "Equal: " + std::to_string(s.equal) +
+                    "  Different: " + std::to_string(s.different);
+    if (s.check > 0)
+      m += "  Check: " + std::to_string(s.check);
+    if (s.minor > 0)
+      m += "  Minor: " + std::to_string(s.minor);
+    if (s.too_large > 0)
+      m += "  Too large: " + std::to_string(s.too_large);
+    m += "  Error: " + std::to_string(s.error);
+    if (with_pending && s.done < s.total)
+      m += "  Not run: " + std::to_string(s.total - s.done);
+    return m;
+  };
+
+  const Stats run = collect_stats(run_indices_);
+
+  std::string msg;
+  if (!finished)
+    msg = (run_filtered_ ? "Comparing filtered " : "Comparing ") +
+          std::to_string(run.done) + "/" + std::to_string(run.total) + "…  ";
+  else if (run_filtered_)
+    msg = "Done.  Filtered " + std::to_string(run.total) + " — ";
+  else
+    msg = "Done.  ";
+  msg += fmt(run, finished);
+
+  // A partial run only tells half the story: also show where the whole list
+  // stands, so the user can see the untouched rows are still accounted for.
+  if (run_filtered_ && run.total != static_cast<int>(results_.size()))
+  {
+    const Stats all = collect_stats({});
+    msg += "   |   All " + std::to_string(all.total) + " — " + fmt(all, true);
   }
 
-  std::string msg = "Done.  Equal: " + std::to_string(equal) +
-                    "  Different: " + std::to_string(diff);
-  // Only surface the check/minor tiers when they actually occurred, so the
-  // common all-images-match case stays uncluttered.
-  if (checkdiff > 0)
-    msg += "  Check: " + std::to_string(checkdiff);
-  if (minordiff > 0)
-    msg += "  Minor: " + std::to_string(minordiff);
-  msg += "  Error: " + std::to_string(err);
   // Only when keep-alive was on, so the normal status line stays as it was.
   if (input_bar_.keep_alive())
-    msg += "  Reused connections: " + std::to_string(reused) + "/" +
-           std::to_string(requests);
+    msg += "   |   Reused connections: " + std::to_string(run.reused) + "/" +
+           std::to_string(run.requests);
+
   status_panel_.set_status(msg);
 }
 

@@ -23,6 +23,7 @@ CompareRunner::~CompareRunner()
 }
 
 void CompareRunner::start(std::vector<QueryInfo> queries,
+                          std::vector<int> indices,
                           std::string server1_url,
                           std::string server2_url,
                           int max_concurrent,
@@ -38,6 +39,7 @@ void CompareRunner::start(std::vector<QueryInfo> queries,
   thread_ = std::thread(&CompareRunner::worker,
                         this,
                         std::move(queries),
+                        std::move(indices),
                         std::move(server1_url),
                         std::move(server2_url),
                         std::max(1, max_concurrent),
@@ -154,6 +156,7 @@ static std::string normalize_base(const std::string& url)
 }
 
 void CompareRunner::worker(std::vector<QueryInfo> queries,
+                           std::vector<int> indices,
                            std::string server1_url,
                            std::string server2_url,
                            int max_concurrent,
@@ -165,6 +168,8 @@ void CompareRunner::worker(std::vector<QueryInfo> queries,
   const std::string base2 = normalize_base(server2_url);
 
   const int total = static_cast<int>(queries.size());
+  // Identity mapping unless the caller supplied one of matching length.
+  const bool remap = indices.size() == queries.size();
   std::atomic<int> next_idx{0};
 
   auto task = [&]()
@@ -177,7 +182,7 @@ void CompareRunner::worker(std::vector<QueryInfo> queries,
 
       const auto& q = queries[i];
       CompareResult result;
-      result.index = i;
+      result.index = remap ? indices[i] : i;
       result.request_string = q.request_string;
       result.status = CompareStatus::RUNNING;
 

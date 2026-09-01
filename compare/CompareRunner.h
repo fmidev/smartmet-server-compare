@@ -36,11 +36,16 @@ class CompareRunner
   sigc::signal<void()>& signal_done() { return sig_done_; }
 
   // Start processing.  Any previous run is stopped first.
+  // `indices` gives, for each entry of `queries`, the index the caller wants
+  // to see back in CompareResult::index — its position in the caller's own
+  // full query list.  Pass an empty vector for the identity mapping 0..n-1;
+  // a partial re-run passes the original indices of the subset it submits.
   // max_concurrent limits how many queries are in flight simultaneously.
   // ignore_host: replace each server's hostname (with/without port) in
   // formatted response text with a placeholder before comparing, so
   // host-only URL differences do not count as content differences.
   void start(std::vector<QueryInfo> queries,
+             std::vector<int> indices,
              std::string server1_url,
              std::string server2_url,
              int max_concurrent,
@@ -60,6 +65,7 @@ class CompareRunner
 
  private:
   void worker(std::vector<QueryInfo> queries,
+              std::vector<int> indices,
               std::string server1_url,
               std::string server2_url,
               int max_concurrent,

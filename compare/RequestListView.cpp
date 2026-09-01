@@ -11,6 +11,7 @@
 #include <cmath>
 #include <iomanip>
 #include <limits>
+#include <set>
 #include <sstream>
 
 // ---------------------------------------------------------------------------
@@ -185,19 +186,33 @@ void RequestListView::populate(const std::vector<QueryInfo>& queries)
   }
 }
 
+void RequestListView::reset_row(const Gtk::TreeModel::Row& row)
+{
+  row[columns_.col_status]     = "PENDING";
+  row[columns_.col_http]       = "";
+  row[columns_.col_psnr]       = "";
+  row[columns_.col_size]       = "";
+  row[columns_.col_raw_status] = static_cast<int>(CompareStatus::PENDING);
+  row[columns_.col_is_image]   = false;
+  row[columns_.col_psnr_val]   = std::numeric_limits<double>::quiet_NaN();
+  row[columns_.col_http_code1] = 0;
+  row[columns_.col_http_code2] = 0;
+}
+
 void RequestListView::reset_to_pending()
 {
   for (auto& row : store_->children())
+    reset_row(row);
+}
+
+void RequestListView::reset_to_pending(const std::vector<int>& indices)
+{
+  const std::set<int> wanted(indices.begin(), indices.end());
+  for (auto& row : store_->children())
   {
-    row[columns_.col_status]     = "PENDING";
-    row[columns_.col_http]       = "";
-    row[columns_.col_psnr]       = "";
-    row[columns_.col_size]       = "";
-    row[columns_.col_raw_status] = static_cast<int>(CompareStatus::PENDING);
-    row[columns_.col_is_image]   = false;
-    row[columns_.col_psnr_val]   = std::numeric_limits<double>::quiet_NaN();
-    row[columns_.col_http_code1] = 0;
-    row[columns_.col_http_code2] = 0;
+    const int idx = row[columns_.col_index];
+    if (wanted.count(idx) != 0)
+      reset_row(row);
   }
 }
 

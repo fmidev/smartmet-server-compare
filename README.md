@@ -13,6 +13,16 @@ run a full comparison, set the status filter to **Different**, click
 **Save filtered…**, and re-load the resulting file to re-test only those
 queries.
 
+**Rerun filtered** does the same re-test without leaving the application
+and without discarding anything: it re-sends only the rows visible through
+the active filter and leaves the results of all other rows as they are.
+So one can, for example, run a full comparison, filter to **Different**,
+click **Rerun filtered** to see whether those differences are reproducible
+(or just cache content), and afterwards click **Compare all** to re-test
+the complete set against a changed server pair — for instance first test
+against production, then two servers of the same production cluster
+against each other.
+
 Sample screenshot of application:
 <img width="1912" height="1166" alt="image" src="doc/smartmet-server-compare-screenshot.png" />
 

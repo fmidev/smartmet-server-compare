@@ -41,6 +41,11 @@ class RequestListView : public Gtk::Box
   // Reset every existing row to the PENDING status label without rebuilding.
   void reset_to_pending();
 
+  // Same, but only for the rows whose col_index appears in `indices`.  Used
+  // by a partial re-run, which must leave the results of the rows it does
+  // not re-send visible and untouched.
+  void reset_to_pending(const std::vector<int>& indices);
+
   // Update the status cell of the row whose index matches result.index.
   void update_status(const CompareResult& result);
 
@@ -85,6 +90,9 @@ class RequestListView : public Gtk::Box
   static Glib::ustring status_markup(CompareStatus s);
 
  private:
+  // Clear one row's result cells back to the PENDING state.
+  void reset_row(const Gtk::TreeModel::Row& row);
+
   void on_selection_changed_internal();
   bool on_button_press(GdkEventButton* event);
   void on_copy_decoded();

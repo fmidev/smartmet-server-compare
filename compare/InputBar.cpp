@@ -59,8 +59,9 @@ InputBar::InputBar(Settings& settings)
   btn_stop_.signal_clicked().connect(sigc::mem_fun(*this, &InputBar::on_stop_clicked));
 
   btn_rerun_filtered_.set_tooltip_text(
-      "Replace the request list with the currently visible (filtered) rows "
-      "and re-run the comparison on them.");
+      "Re-run the comparison for the currently visible (filtered) rows only.  "
+      "The request list is kept intact and the results of the other rows are "
+      "left untouched.");
 
   row2_.set_border_width(4);
   row2_.pack_start(lbl_srv1_, false, false);

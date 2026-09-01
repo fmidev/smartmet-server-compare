@@ -52,6 +52,31 @@ All source lives in `compare/`:
   `UrlUtils`, `Settings` (JSON persistence in
   `~/.local/share/smartmet-server-compare/history.json`), `Types.h`.
 
+## Partial re-runs ("Rerun filtered")
+
+"Compare all" and "Rerun filtered" both go through
+`MainWindow::start_compare(indices, filtered)`; they differ only in the
+row set they hand it.  A partial re-run **does not** rebuild the query
+list: it resets and re-sends only the rows visible through the active
+filter and leaves every other row's `CompareResult` untouched.  That is
+what makes the intended workflow possible — re-run just the differing
+queries to see whether e.g. cache content explains them, then hit
+"Compare all" again on the still-complete list, possibly against
+different servers.
+
+Because the subset handed to `CompareRunner::start()` is renumbered
+0..k-1, the runner also takes an `indices` vector mapping each submitted
+query back to its position in `MainWindow::queries_`, and reports that
+original index in `CompareResult::index`.  An empty `indices` means the
+identity mapping.  Everything downstream (`results_[index]`,
+`RequestListView::update_status`) therefore keeps addressing rows by
+their original index.
+
+`MainWindow::run_indices_` / `run_filtered_` remember what the current
+(or most recent) run covered.  They are cleared whenever the query list
+itself changes (fetch, file load, query edit), since the indices would
+otherwise dangle.
+
 ## Persistent connections (HTTP keep-alive)
 
 Off by default, toggled by the "Reuse connections (HTTP keep-alive)"

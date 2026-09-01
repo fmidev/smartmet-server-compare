@@ -62,6 +62,12 @@ class MainWindow : public Gtk::Window
   // ----- Helpers -----
   void show_result(int index);
 
+  // Start a comparison over `indices` (positions in `queries_`).  `filtered`
+  // is true for a partial re-run, which resets and re-sends only those rows
+  // and leaves every other row's result in place; the status line then
+  // reports the subset and the whole list separately.
+  void start_compare(std::vector<int> indices, bool filtered);
+
   // Orchestrate the asynchronous result-display pipeline: debounces rapid
   // selection changes, runs ResultPanel::prepare_async on a worker thread,
   // and posts the outcome back to the main loop via `show_dispatcher_`.
@@ -96,6 +102,12 @@ class MainWindow : public Gtk::Window
 
   int total_queries_{0};
   int done_queries_{0};
+
+  // Rows submitted to the current (or most recent) run, and whether that run
+  // was a partial one.  A full run leaves `run_indices_` empty, which
+  // collect_stats() reads as "every row".
+  std::vector<int> run_indices_;
+  bool             run_filtered_{false};
 
   // ----- Async show pipeline -----
   // `current_show_idx_` is the latest user-requested index; show workers

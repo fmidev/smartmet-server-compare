@@ -9,6 +9,7 @@
 #include <gtkmm/messagedialog.h>
 #include <gtkmm/settings.h>
 
+#include <algorithm>
 #include <fstream>
 #include <memory>
 #include <utility>
@@ -254,6 +255,9 @@ void MainWindow::on_load_file_requested()
 void MainWindow::on_queries_fetched(std::vector<QueryInfo> queries)
 {
   queries_ = std::move(queries);
+  // The old run's indices no longer refer to anything.
+  run_indices_.clear();
+  run_filtered_ = false;
   list_view_.populate(queries_);
   results_.assign(queries_.size(), CompareResult{});
   for (int i = 0; i < static_cast<int>(queries_.size()); ++i)
@@ -273,6 +277,24 @@ void MainWindow::on_queries_fetched(std::vector<QueryInfo> queries)
 
 void MainWindow::on_compare_requested()
 {
+  // Full run: every row, in order.
+  std::vector<int> all(queries_.size());
+  for (int i = 0; i < static_cast<int>(queries_.size()); ++i)
+    all[i] = i;
+  start_compare(std::move(all), false);
+}
+
+void MainWindow::on_rerun_filtered_requested()
+{
+  // Partial run: only the rows visible through the active filter.  The query
+  // list itself is left alone, so the untouched rows keep their results and a
+  // later "Compare all" — possibly against different servers — still covers
+  // the complete set.
+  start_compare(list_view_.visible_indices(), true);
+}
+
+void MainWindow::start_compare(std::vector<int> indices, bool filtered)
+{
   const std::string srv1 = input_bar_.server1_url();
   const std::string srv2 = input_bar_.server2_url();
 
@@ -283,64 +305,56 @@ void MainWindow::on_compare_requested()
     return;
   }
 
-  // Reset all results to PENDING
-  for (auto& r : results_)
+  if (indices.empty())
   {
-    r.status = CompareStatus::PENDING;
-    r.body1.clear();
-    r.body2.clear();
-    r.formatted1.clear();
-    r.formatted2.clear();
-    r.error1.clear();
-    r.error2.clear();
-  }
-  list_view_.reset_to_pending();
-  result_panel_.clear();
-
-  total_queries_ = static_cast<int>(queries_.size());
-  done_queries_  = 0;
-  status_panel_.set_progress(0.0);
-
-  input_bar_.start_comparing();
-  status_panel_.set_status("Comparing…");
-
-  runner_.start(queries_, srv1, srv2,
-                input_bar_.max_concurrent(),
-                input_bar_.max_size_mb() * 1024 * 1024,
-                input_bar_.ignore_server_host(),
-                input_bar_.keep_alive());
-}
-
-void MainWindow::on_rerun_filtered_requested()
-{
-  const auto idx = list_view_.visible_indices();
-  if (idx.empty())
-  {
-    Gtk::MessageDialog dlg(*this, "No queries match the current filter.",
-                           false, Gtk::MESSAGE_INFO);
+    Gtk::MessageDialog dlg(*this,
+        filtered ? "No queries match the current filter."
+                 : "No queries to compare.",
+        false, Gtk::MESSAGE_INFO);
     dlg.run();
     return;
   }
 
-  std::vector<QueryInfo> filtered;
-  filtered.reserve(idx.size());
-  for (int i : idx)
-    if (i >= 0 && i < static_cast<int>(queries_.size()))
-      filtered.push_back(queries_[i]);
-
-  queries_ = std::move(filtered);
-  list_view_.clear();
-  results_.clear();
-  result_panel_.clear();
-  list_view_.populate(queries_);
-  results_.assign(queries_.size(), CompareResult{});
-  for (int i = 0; i < static_cast<int>(queries_.size()); ++i)
+  // Reset the rows about to be re-sent — and only those.
+  std::vector<QueryInfo> subset;
+  subset.reserve(indices.size());
+  for (int i : indices)
   {
-    results_[i].index = i;
-    results_[i].request_string = queries_[i].request_string;
+    if (i < 0 || i >= static_cast<int>(queries_.size()))
+      continue;
+    CompareResult fresh;
+    fresh.index          = i;
+    fresh.request_string = queries_[i].request_string;
+    results_[i] = std::move(fresh);
+    subset.push_back(queries_[i]);
+  }
+  list_view_.reset_to_pending(indices);
+
+  // Keep the result panel as it is when it shows a row this run does not
+  // touch; its data is still valid.
+  const int shown = list_view_.selected_index();
+  if (shown < 0 ||
+      std::find(indices.begin(), indices.end(), shown) != indices.end())
+  {
+    cancel_pending_show();
+    current_show_idx_ = -1;
+    result_panel_.clear();
   }
 
-  on_compare_requested();
+  run_indices_   = std::move(indices);
+  run_filtered_  = filtered;
+  total_queries_ = static_cast<int>(subset.size());
+  done_queries_  = 0;
+  status_panel_.set_progress(0.0);
+
+  input_bar_.start_comparing();
+  status_panel_.set_status(filtered ? "Comparing filtered queries…" : "Comparing…");
+
+  runner_.start(std::move(subset), run_indices_, srv1, srv2,
+                input_bar_.max_concurrent(),
+                input_bar_.max_size_mb() * 1024 * 1024,
+                input_bar_.ignore_server_host(),
+                input_bar_.keep_alive());
 }
 
 void MainWindow::on_stop_requested()
@@ -482,6 +496,8 @@ void MainWindow::on_query_edited(int index,
     queries_.insert(queries_.begin() + index + 1, std::move(q));
   }
 
+  run_indices_.clear();
+  run_filtered_ = false;
   list_view_.populate(queries_);
   results_.assign(queries_.size(), CompareResult{});
   for (int i = 0; i < static_cast<int>(queries_.size()); ++i)

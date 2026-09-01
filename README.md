@@ -56,6 +56,25 @@ Text-diff view (when either diff pane has keyboard focus):
 On opening a text comparison the view scrolls automatically to the first
 difference.
 
+## Text-diff view — collapsed by default
+
+Only the differing lines and a few unchanged lines around each of them are
+shown; every skipped run is replaced by a single `⋯ N lines hidden ⋯`
+marker.  Filling the panes with a multi-megabyte response otherwise takes
+seconds of staring at a frozen window, and the interesting part is a
+handful of lines out of thousands.
+
+Two controls in the diff toolbar:
+
+- **Full text** — render the complete responses instead.  Slow for large
+  responses; the setting is remembered between sessions.
+- **Context** — how many unchanged lines are kept above and below each
+  difference (3 by default).
+
+The label beside them reports how much is hidden.  Note that in-pane
+search (Ctrl+F) only covers what is actually rendered, so switch to
+**Full text** to search a whole response.
+
 ## Request list — row context menu
 
 Right-clicking a row shows:

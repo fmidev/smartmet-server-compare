@@ -15,6 +15,10 @@
 class TextDiffViewer : public ResultViewer
 {
  public:
+  // `settings`, when non-null, is handed to the DiffView so its view-mode
+  // choices survive a restart.  It must outlive the viewer.
+  explicit TextDiffViewer(Settings* settings = nullptr) : diff_(settings) {}
+
   const char* name() const override { return "text-diff"; }
 
   bool can_handle(const CompareResult& result) const override;

@@ -42,7 +42,7 @@ MainWindow::MainWindow()
   // Result viewers, registered most-specific first.  TextDiffViewer is the
   // catch-all and goes last.
   result_panel_.add_viewer(std::make_unique<ImageDiffViewer>());
-  result_panel_.add_viewer(std::make_unique<TextDiffViewer>());
+  result_panel_.add_viewer(std::make_unique<TextDiffViewer>(&settings_));
 
   vpaned_.pack1(list_view_, false, true);
   vpaned_.pack2(result_panel_, true, true);

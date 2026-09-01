@@ -1,5 +1,7 @@
 #include "DiffView.h"
 
+#include "Settings.h"
+
 #include <dtl/dtl.hpp>
 
 #include <algorithm>
@@ -210,11 +212,144 @@ static void insert_placeholder(Glib::RefPtr<Gtk::TextBuffer>&          buf,
   buf->apply_tag(tag, buf->get_iter_at_offset(start), mark->get_iter());
 }
 
+// Insert a one-line marker standing in for a run of hidden lines.
+static void insert_skip(Glib::RefPtr<Gtk::TextBuffer>&          buf,
+                         Glib::RefPtr<Gtk::TextMark>&             mark,
+                         const std::string&                       text,
+                         const Glib::RefPtr<Gtk::TextBuffer::Tag>& tag)
+{
+  const int start = mark->get_iter().get_offset();
+  buf->insert(mark->get_iter(), text + "\n");
+  buf->apply_tag(tag, buf->get_iter_at_offset(start), mark->get_iter());
+}
+
+// ---------------------------------------------------------------------------
+// Render plan
+// ---------------------------------------------------------------------------
+
+// One line of the merged side-by-side document, described without copying any
+// text: `del` / `add` index into PreparedDiff::ses (-1 = grey placeholder in
+// that pane) and `pair` indexes paired_cses (-1 = no character-level diff).
+// Building this first lets the renderer know which lines are differences
+// before it inserts anything, which is what collapsing needs.
+namespace
+{
+struct PlanLine
+{
+  int  del  = -1;
+  int  add  = -1;
+  int  pair = -1;
+  bool diff = false;  // false for common lines and host-only differences
+};
+}  // namespace
+
+static std::vector<PlanLine> build_plan(const DiffView::PreparedDiff& prepared)
+{
+  const auto& ses = prepared.ses;
+  const bool host_norm = !prepared.pair_is_host_only.empty();
+
+  std::vector<PlanLine> plan;
+  plan.reserve(ses.size());
+
+  std::size_t pair_idx = 0;
+  std::size_t i = 0;
+  while (i < ses.size())
+  {
+    if (ses[i].second.type == dtl::SES_COMMON)
+    {
+      PlanLine pl;
+      pl.del = pl.add = static_cast<int>(i);
+      plan.push_back(pl);
+      ++i;
+      continue;
+    }
+
+    std::vector<int> del_idx, add_idx;
+    while (i < ses.size() && ses[i].second.type != dtl::SES_COMMON)
+    {
+      (ses[i].second.type == dtl::SES_DELETE ? del_idx : add_idx)
+          .push_back(static_cast<int>(i));
+      ++i;
+    }
+
+    const std::size_t pairs = std::min(del_idx.size(), add_idx.size());
+    for (std::size_t j = 0; j < pairs; ++j)
+    {
+      PlanLine pl;
+      pl.del  = del_idx[j];
+      pl.add  = add_idx[j];
+      pl.pair = static_cast<int>(pair_idx);
+      // Pairs that differ only in the server hostname are context, not a diff.
+      pl.diff = !(host_norm && prepared.pair_is_host_only[pair_idx]);
+      ++pair_idx;
+      plan.push_back(pl);
+    }
+    for (std::size_t j = pairs; j < del_idx.size(); ++j)
+    {
+      PlanLine pl;
+      pl.del  = del_idx[j];
+      pl.diff = true;
+      plan.push_back(pl);
+    }
+    for (std::size_t j = pairs; j < add_idx.size(); ++j)
+    {
+      PlanLine pl;
+      pl.add  = add_idx[j];
+      pl.diff = true;
+      plan.push_back(pl);
+    }
+  }
+  return plan;
+}
+
+// Which plan lines actually get inserted: every difference plus `context`
+// lines on each side of it.
+static std::vector<bool> visible_lines(const std::vector<PlanLine>& plan,
+                                        bool full_text,
+                                        int context)
+{
+  const std::size_t n = plan.size();
+  std::vector<bool> keep(n, full_text);
+  if (full_text)
+    return keep;
+
+  // Difference array, so a wide context radius stays O(n) rather than
+  // O(n * context).
+  std::vector<int> delta(n + 1, 0);
+  const std::size_t ctx = static_cast<std::size_t>(std::max(0, context));
+  for (std::size_t i = 0; i < n; ++i)
+  {
+    if (!plan[i].diff) continue;
+    ++delta[i > ctx ? i - ctx : 0];
+    --delta[std::min(n, i + ctx + 1)];
+  }
+  int run = 0;
+  for (std::size_t i = 0; i < n; ++i)
+  {
+    run += delta[i];
+    keep[i] = run > 0;
+  }
+
+  // A single hidden line would only be replaced by a one-line marker saying
+  // so — show the line itself instead.
+  for (std::size_t i = 0; i < n;)
+  {
+    if (keep[i]) { ++i; continue; }
+    std::size_t j = i;
+    while (j < n && !keep[j]) ++j;
+    if (j - i <= 1)
+      for (std::size_t k = i; k < j; ++k) keep[k] = true;
+    i = j;
+  }
+  return keep;
+}
+
 // ---------------------------------------------------------------------------
 // DiffView – construction
 // ---------------------------------------------------------------------------
 
-DiffView::DiffView() : Gtk::Box(Gtk::ORIENTATION_VERTICAL, 0)
+DiffView::DiffView(Settings* settings)
+    : Gtk::Box(Gtk::ORIENTATION_VERTICAL, 0), settings_(settings)
 {
   init_column(left_col_, left_label_, left_scroll_, left_view_);
   init_column(right_col_, right_label_, right_scroll_, right_view_);
@@ -231,6 +366,30 @@ DiffView::DiffView() : Gtk::Box(Gtk::ORIENTATION_VERTICAL, 0)
   nav_row_.pack_start(diff_info_label_, true, true, 0);
   btn_prev_diff_.signal_clicked().connect(sigc::mem_fun(*this, &DiffView::on_prev_diff));
   btn_next_diff_.signal_clicked().connect(sigc::mem_fun(*this, &DiffView::on_next_diff));
+
+  // View-mode controls: collapsed (default) vs. the complete responses.
+  spin_context_.set_range(0, 999);
+  spin_context_.set_increments(1, 10);
+  spin_context_.set_width_chars(3);
+  spin_context_.set_value(
+      settings_ ? settings_->get_int("diff_context_lines", kDefaultContextLines)
+                : kDefaultContextLines);
+  chk_full_text_.set_active(settings_ &&
+                            settings_->get_int("diff_full_text", 0) != 0);
+  chk_full_text_.set_tooltip_text(
+      "Insert the complete responses instead of only the differing lines and "
+      "their surrounding context.  Slow for multi-megabyte responses.");
+  spin_context_.set_tooltip_text(
+      "Unchanged lines kept above and below each difference.");
+  spin_context_.set_sensitive(!chk_full_text_.get_active());
+
+  nav_row_.pack_start(chk_full_text_, false, false, 0);
+  nav_row_.pack_start(lbl_context_,   false, false, 0);
+  nav_row_.pack_start(spin_context_,  false, false, 0);
+  chk_full_text_.signal_toggled().connect(
+      sigc::mem_fun(*this, &DiffView::on_view_mode_changed));
+  spin_context_.signal_value_changed().connect(
+      sigc::mem_fun(*this, &DiffView::on_view_mode_changed));
 
   // Minimap beside the right scrollbar.
   minimap_.set_size_request(14, -1);
@@ -313,6 +472,16 @@ DiffView::DiffView() : Gtk::Box(Gtk::ORIENTATION_VERTICAL, 0)
   tag_ph_right_ = rbuf->create_tag("ph");
   tag_ph_right_->property_background() = "#e8e8e8";
   tag_ph_right_->property_foreground() = "#b0b0b0";
+
+  tag_skip_left_ = lbuf->create_tag("skip");
+  tag_skip_left_->property_background() = "#e4e8ee";
+  tag_skip_left_->property_foreground() = "#6a7080";
+  tag_skip_left_->property_style() = Pango::STYLE_ITALIC;
+
+  tag_skip_right_ = rbuf->create_tag("skip");
+  tag_skip_right_->property_background() = "#e4e8ee";
+  tag_skip_right_->property_foreground() = "#6a7080";
+  tag_skip_right_->property_style() = Pango::STYLE_ITALIC;
 
   // Character-level tags – created after line-level tags so they have higher
   // priority and override the line background on individual characters.
@@ -509,7 +678,43 @@ void DiffView::apply_prepared(const std::shared_ptr<PreparedDiff>& prepared,
                                const std::string& label1,
                                const std::string& label2)
 {
-  set_labels(label1, label2);
+  last_prepared_ = prepared;
+  last_label1_   = label1;
+  last_label2_   = label2;
+  render_prepared(false);
+}
+
+bool DiffView::full_text() const
+{
+  return chk_full_text_.get_active();
+}
+
+int DiffView::context_lines() const
+{
+  return spin_context_.get_value_as_int();
+}
+
+void DiffView::on_view_mode_changed()
+{
+  spin_context_.set_sensitive(!full_text());
+
+  if (settings_)
+  {
+    settings_->set_int("diff_full_text", full_text() ? 1 : 0);
+    settings_->set_int("diff_context_lines", context_lines());
+  }
+
+  // Nothing to re-render when the panes hold an error or binary indicator.
+  if (last_prepared_)
+    render_prepared(true);
+}
+
+void DiffView::render_prepared(bool keep_position)
+{
+  // reset_diff_navigation() below drops current_diff_, so remember it first.
+  const int wanted_diff = keep_position ? current_diff_ : -1;
+
+  set_labels(last_label1_, last_label2_);
   reset_diff_navigation();
 
   auto lbuf = left_view_.get_buffer();
@@ -517,118 +722,123 @@ void DiffView::apply_prepared(const std::shared_ptr<PreparedDiff>& prepared,
   lbuf->set_text("");
   rbuf->set_text("");
 
-  if (!prepared)
+  if (!last_prepared_)
   {
     update_diff_info_label();
     minimap_.queue_draw();
     return;
   }
 
+  const auto& prepared = *last_prepared_;
+  const auto& ses      = prepared.ses;
+  const bool host_norm = !prepared.pair_is_host_only.empty();
+  static const HostSpanList no_spans;
+
+  const std::vector<PlanLine> plan = build_plan(prepared);
+  const std::vector<bool>     keep =
+      visible_lines(plan, full_text(), context_lines());
+
   auto lmark = lbuf->create_mark(lbuf->end(), false);
   auto rmark = rbuf->create_mark(rbuf->end(), false);
 
-  const auto& ses = prepared->ses;
-  const auto& paired = prepared->paired_cses;
-  const bool host_norm = !prepared->pair_is_host_only.empty();
-  static const HostSpanList no_spans;
-  std::size_t pair_idx = 0;
-  std::size_t i = 0;
-  int cur_line = 0;
+  int cur_line   = 0;   // line number in the rendered (possibly collapsed) view
+  int diff_start = -1;
+  int hidden     = 0;
 
-  while (i < ses.size())
+  auto flush_diff = [&]()
   {
-    const auto& [elem, info] = ses[i];
-
-    if (info.type == dtl::SES_COMMON)
+    if (diff_start >= 0)
     {
-      lbuf->insert(lmark->get_iter(), elem + "\n");
-      rbuf->insert(rmark->get_iter(), elem + "\n");
-      ++i;
+      diff_ranges_.emplace_back(diff_start, cur_line - 1);
+      diff_start = -1;
+    }
+  };
+
+  const std::size_t n = plan.size();
+  std::size_t p = 0;
+  while (p < n)
+  {
+    // A run of lines that stays hidden collapses into a single marker.
+    if (!keep[p])
+    {
+      std::size_t q = p;
+      while (q < n && !keep[q]) ++q;
+      const std::size_t count = q - p;
+
+      flush_diff();
+      const std::string marker = "⋯ " + std::to_string(count) + " line" +
+                                 (count == 1 ? "" : "s") + " hidden ⋯";
+      insert_skip(lbuf, lmark, marker, tag_skip_left_);
+      insert_skip(rbuf, rmark, marker, tag_skip_right_);
+
+      hidden += static_cast<int>(count);
       ++cur_line;
+      p = q;
       continue;
     }
 
-    std::vector<std::string> dels, adds;
-    while (i < ses.size() && ses[i].second.type != dtl::SES_COMMON)
+    const auto& pl = plan[p];
+
+    if (!pl.diff)
     {
-      if (ses[i].second.type == dtl::SES_DELETE)
-        dels.push_back(ses[i].first);
-      else
-        adds.push_back(ses[i].first);
-      ++i;
+      // Common line, or a pair differing only in the server hostname: shown
+      // with each side's own text but without diff colouring.
+      flush_diff();
+      lbuf->insert(lmark->get_iter(), ses[pl.del].first + "\n");
+      rbuf->insert(rmark->get_iter(), ses[pl.add].first + "\n");
     }
-
-    const std::size_t pairs = std::min(dels.size(), adds.size());
-
-    // Track diff-range fragments within the block, skipping host-only pairs.
-    int diff_start = -1;
-    auto begin_diff = [&]() { if (diff_start < 0) diff_start = cur_line; };
-    auto flush_diff = [&]() {
-      if (diff_start >= 0) {
-        diff_ranges_.emplace_back(diff_start, cur_line - 1);
-        diff_start = -1;
-      }
-    };
-
-    for (std::size_t j = 0; j < pairs; ++j)
+    else if (pl.del >= 0 && pl.add >= 0)
     {
-      const auto& cses = paired[pair_idx];
-      const bool host_only = host_norm && prepared->pair_is_host_only[pair_idx];
-      const auto& del_spans = host_norm ? prepared->pair_host_spans[pair_idx].del_spans
-                                        : no_spans;
-      const auto& add_spans = host_norm ? prepared->pair_host_spans[pair_idx].add_spans
-                                        : no_spans;
-      ++pair_idx;
-
-      if (host_only)
-      {
-        // Pairs that differ only in the server hostname are treated as context
-        // lines: show original text from each side but without diff colouring.
-        flush_diff();
-        lbuf->insert(lmark->get_iter(), dels[j] + "\n");
-        rbuf->insert(rmark->get_iter(), adds[j] + "\n");
-      }
-      else
-      {
-        begin_diff();
-        insert_line(lbuf, lmark, dels[j], tag_del_, tag_del_char_, &cses, dtl::SES_DELETE, del_spans);
-        insert_line(rbuf, rmark, adds[j], tag_ins_, tag_ins_char_, &cses, dtl::SES_ADD,    add_spans);
-      }
-      ++cur_line;
+      if (diff_start < 0) diff_start = cur_line;
+      const auto& cses = prepared.paired_cses[pl.pair];
+      const auto& del_spans =
+          host_norm ? prepared.pair_host_spans[pl.pair].del_spans : no_spans;
+      const auto& add_spans =
+          host_norm ? prepared.pair_host_spans[pl.pair].add_spans : no_spans;
+      insert_line(lbuf, lmark, ses[pl.del].first, tag_del_, tag_del_char_,
+                  &cses, dtl::SES_DELETE, del_spans);
+      insert_line(rbuf, rmark, ses[pl.add].first, tag_ins_, tag_ins_char_,
+                  &cses, dtl::SES_ADD, add_spans);
     }
-
-    for (std::size_t j = pairs; j < dels.size(); ++j)
+    else if (pl.del >= 0)
     {
-      begin_diff();
-      insert_line(lbuf, lmark, dels[j], tag_del_, {}, nullptr, dtl::SES_DELETE);
+      if (diff_start < 0) diff_start = cur_line;
+      insert_line(lbuf, lmark, ses[pl.del].first, tag_del_, {}, nullptr,
+                  dtl::SES_DELETE);
       insert_placeholder(rbuf, rmark, tag_ph_right_);
-      ++cur_line;
     }
-
-    for (std::size_t j = pairs; j < adds.size(); ++j)
+    else
     {
-      begin_diff();
+      if (diff_start < 0) diff_start = cur_line;
       insert_placeholder(lbuf, lmark, tag_ph_left_);
-      insert_line(rbuf, rmark, adds[j], tag_ins_, {}, nullptr, dtl::SES_ADD);
-      ++cur_line;
+      insert_line(rbuf, rmark, ses[pl.add].first, tag_ins_, {}, nullptr,
+                  dtl::SES_ADD);
     }
 
-    flush_diff();
+    ++cur_line;
+    ++p;
   }
+  flush_diff();
 
   lbuf->delete_mark(lmark);
   rbuf->delete_mark(rmark);
 
-  total_lines_ = cur_line;
+  total_lines_    = cur_line;
+  document_lines_ = static_cast<int>(n);
+  hidden_lines_   = hidden;
   update_diff_info_label();
   minimap_.queue_draw();
 
-  // Centre on the first difference so the user doesn't have to hunt for it
-  // when the two responses differ in only a few lines out of thousands.
+  // Centre on a difference so the user doesn't have to hunt for it when the
+  // two responses differ in only a few lines out of thousands — the one they
+  // were looking at if the view mode just changed under them, else the first.
   if (!diff_ranges_.empty())
   {
-    current_diff_ = 0;
-    scroll_to_line(diff_ranges_.front().first);
+    current_diff_ = (wanted_diff >= 0 &&
+                     wanted_diff < static_cast<int>(diff_ranges_.size()))
+                        ? wanted_diff
+                        : 0;
+    scroll_to_line(diff_ranges_[current_diff_].first);
     update_diff_info_label();
   }
 }
@@ -650,6 +860,7 @@ void DiffView::set_binary(bool equal, const std::string& label1, const std::stri
 {
   set_labels(label1, label2);
   reset_diff_navigation();
+  last_prepared_.reset();
   const char* msg = equal ? "[binary content – identical]" : "[binary content – DIFFERENT]";
   left_view_.get_buffer()->set_text(msg);
   right_view_.get_buffer()->set_text(msg);
@@ -664,6 +875,7 @@ void DiffView::set_error(const std::string& msg1,
 {
   set_labels(label1, label2);
   reset_diff_navigation();
+  last_prepared_.reset();
   left_view_.get_buffer()->set_text(msg1.empty() ? "(no error)" : msg1);
   right_view_.get_buffer()->set_text(msg2.empty() ? "(no error)" : msg2);
   update_diff_info_label();
@@ -677,6 +889,7 @@ void DiffView::clear()
   left_view_.get_buffer()->set_text("");
   right_view_.get_buffer()->set_text("");
   reset_diff_navigation();
+  last_prepared_.reset();
   update_diff_info_label();
   minimap_.queue_draw();
 }
@@ -690,6 +903,8 @@ void DiffView::reset_diff_navigation()
   diff_ranges_.clear();
   total_lines_ = 0;
   current_diff_ = -1;
+  document_lines_ = 0;
+  hidden_lines_ = 0;
 }
 
 void DiffView::update_diff_info_label()
@@ -698,13 +913,22 @@ void DiffView::update_diff_info_label()
   btn_prev_diff_.set_sensitive(has_diffs);
   btn_next_diff_.set_sensitive(has_diffs);
 
+  std::string text;
   if (!has_diffs)
-    diff_info_label_.set_text("No differences");
+    text = "No differences";
   else if (current_diff_ < 0)
-    diff_info_label_.set_text(std::to_string(diff_ranges_.size()) + " differences");
+    text = std::to_string(diff_ranges_.size()) + " differences";
   else
-    diff_info_label_.set_text("Difference " + std::to_string(current_diff_ + 1) +
-                              " of " + std::to_string(diff_ranges_.size()));
+    text = "Difference " + std::to_string(current_diff_ + 1) + " of " +
+           std::to_string(diff_ranges_.size());
+
+  // Say so when the panes are not showing everything — search and scrolling
+  // only cover what was actually inserted.
+  if (hidden_lines_ > 0)
+    text += "   ·   " + std::to_string(hidden_lines_) + " of " +
+            std::to_string(document_lines_) + " lines hidden";
+
+  diff_info_label_.set_text(text);
 }
 
 void DiffView::scroll_to_line(int line)

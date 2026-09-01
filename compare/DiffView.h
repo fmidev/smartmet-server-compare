@@ -1,12 +1,14 @@
 #pragma once
 #include <gtkmm/box.h>
 #include <gtkmm/button.h>
+#include <gtkmm/checkbutton.h>
 #include <gtkmm/drawingarea.h>
 #include <gtkmm/label.h>
 #include <gtkmm/scrolledwindow.h>
 #include <gtkmm/scrollbar.h>
 #include <gtkmm/searchentry.h>
 #include <gtkmm/separator.h>
+#include <gtkmm/spinbutton.h>
 #include <gtkmm/textview.h>
 
 #include <atomic>
@@ -14,6 +16,8 @@
 #include <string>
 #include <utility>
 #include <vector>
+
+class Settings;
 
 /**
  * Side-by-side text diff widget styled after kdiff3's central comparison pane.
@@ -31,11 +35,24 @@
  *      different characters are highlighted with the stronger colour)
  *
  * The diff is computed with the dtl (Diff Template Library).
+ *
+ * By default only the differing lines plus `context_lines()` unchanged lines
+ * around each of them are inserted into the text buffers; every skipped run
+ * is replaced by a single "N lines hidden" marker.  Filling a GtkTextBuffer
+ * with a multi-megabyte response takes seconds on the main thread, and the
+ * user is looking for the differences anyway.  The "Full text" check button
+ * renders everything; both it and the context width are remembered in
+ * `Settings` when one is supplied.
  */
 class DiffView : public Gtk::Box
 {
  public:
-  DiffView();
+  // `settings`, when non-null, persists the "Full text" / context-width
+  // choices across sessions.  It must outlive the DiffView.
+  explicit DiffView(Settings* settings = nullptr);
+
+  // Unchanged lines kept around each difference when not showing full text.
+  static constexpr int kDefaultContextLines = 3;
 
   // Opaque precomputed diff data.  Produced by compute_diff() on a worker
   // thread and consumed by apply_prepared() on the main thread.
@@ -89,6 +106,18 @@ class DiffView : public Gtk::Box
   void clear();
 
  private:
+  // Render `last_prepared_` into the panes honouring the current view mode.
+  // `keep_position` re-selects the difference the user was on (used when the
+  // mode changes under them); otherwise the view lands on the first one.
+  void render_prepared(bool keep_position);
+
+  // Current view-mode inputs.
+  bool full_text() const;
+  int  context_lines() const;
+
+  // Re-render after the user toggled "Full text" or changed the context width.
+  void on_view_mode_changed();
+
   void init_column(Gtk::Box& col,
                    Gtk::Label& lbl,
                    Gtk::ScrolledWindow& scroll,
@@ -121,10 +150,15 @@ class DiffView : public Gtk::Box
   void update_search_info_label();
   bool on_search_key_press(GdkEventKey* event);
 
+  Settings* settings_ = nullptr;
+
   Gtk::Box nav_row_{Gtk::ORIENTATION_HORIZONTAL, 4};
   Gtk::Button btn_prev_diff_{"Prev diff"};
   Gtk::Button btn_next_diff_{"Next diff"};
   Gtk::Label diff_info_label_;
+  Gtk::CheckButton chk_full_text_{"Full text"};
+  Gtk::Label       lbl_context_{"Context:"};
+  Gtk::SpinButton  spin_context_;
 
   // Search bar (shown on Ctrl+F, hidden on Escape / close button).
   Gtk::Box         search_bar_{Gtk::ORIENTATION_HORIZONTAL, 4};
@@ -159,6 +193,17 @@ class DiffView : public Gtk::Box
   int total_lines_ = 0;
   int current_diff_ = -1;
 
+  // Last diff applied, kept so a view-mode change can re-render without
+  // recomputing the SES.  Null while an error / binary indicator is shown.
+  std::shared_ptr<PreparedDiff> last_prepared_;
+  std::string                   last_label1_;
+  std::string                   last_label2_;
+
+  // Collapsed-view accounting, for the info label: lines the full document
+  // would have, and how many of them the markers stand for.
+  int document_lines_ = 0;
+  int hidden_lines_   = 0;
+
   // Text buffer tags (created once in the constructor).
   // Line-level tags are created first so char-level tags get higher priority
   // in the tag table and override the line background on individual characters.
@@ -166,6 +211,8 @@ class DiffView : public Gtk::Box
   Glib::RefPtr<Gtk::TextBuffer::Tag> tag_ins_;        // light-green bg, whole inserted line (right)
   Glib::RefPtr<Gtk::TextBuffer::Tag> tag_ph_left_;    // grey placeholder line (left)
   Glib::RefPtr<Gtk::TextBuffer::Tag> tag_ph_right_;   // grey placeholder line (right)
+  Glib::RefPtr<Gtk::TextBuffer::Tag> tag_skip_left_;  // "N lines hidden" marker (left)
+  Glib::RefPtr<Gtk::TextBuffer::Tag> tag_skip_right_; // "N lines hidden" marker (right)
   Glib::RefPtr<Gtk::TextBuffer::Tag> tag_del_char_;   // darker-red, changed char runs (left)
   Glib::RefPtr<Gtk::TextBuffer::Tag> tag_ins_char_;   // darker-green, changed char runs (right)
   // Search highlight tags – created after diff tags so they take priority.

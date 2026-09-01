@@ -52,6 +52,40 @@ All source lives in `compare/`:
   `UrlUtils`, `Settings` (JSON persistence in
   `~/.local/share/smartmet-server-compare/history.json`), `Types.h`.
 
+## Text-diff rendering (collapsed context view)
+
+`DiffView` renders only the differing lines plus `context_lines()`
+unchanged lines around each of them; every skipped run becomes a single
+"N lines hidden" marker.  Inserting a multi-megabyte response into a
+GtkTextBuffer with per-line and per-character tags blocks the main loop
+for seconds, and the SES that `compute_diff()` already produced tells us
+exactly which lines matter.  The "Full text" check button and the context
+spin button in the nav row switch modes; both are persisted through
+`Settings` (`diff_full_text`, `diff_context_lines`) when `MainWindow`
+hands one to `TextDiffViewer`.
+
+Rendering is therefore two-phase:
+
+- `build_plan()` walks the SES once and produces one `PlanLine` per line
+  of the merged side-by-side document — indices into `ses` for each pane
+  (-1 = grey placeholder), the `paired_cses` index, and whether the line
+  is a real difference (host-only pairs are context, not differences).
+  It stores indices rather than strings, so it neither copies the text
+  nor forces a decision about what is visible.
+- `visible_lines()` marks the lines to insert, using a difference array so
+  a wide context radius stays O(n).  A hidden run of a single line is kept
+  instead, since the marker replacing it would cost the same line.
+
+`render_prepared()` then inserts only the marked lines and records
+`diff_ranges_` in *rendered* coordinates, so diff navigation and the
+minimap keep working against what is on screen.  `apply_prepared()` keeps
+the `PreparedDiff` in `last_prepared_`, letting a mode change re-render
+without recomputing the SES; `set_binary()` / `set_error()` / `clear()`
+reset it so a toggle cannot resurrect a stale diff over an error message.
+
+Caveat: in-pane search only sees rendered text.  The info label says how
+many lines are hidden.
+
 ## Partial re-runs ("Rerun filtered")
 
 "Compare all" and "Rerun filtered" both go through

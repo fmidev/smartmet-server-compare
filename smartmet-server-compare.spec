@@ -2,7 +2,7 @@
 %define SPECNAME smartmet-server-compare
 
 Name: %{SPECNAME}
-Version: 26.9.1
+Version: 26.10.9
 Release: 1%{?dist}.fmi
 Summary: SmartMet Server comparison tool
 License: MIT
@@ -59,6 +59,10 @@ rm -rf $RPM_BUILD_ROOT
 %{_bindir}/smartmet-server-compare
 
 %changelog
+* Fri Oct 9 2026 Andris Pavēnis <andris.pavenis@fmi.fi> 26.10.9.fmi
+- Support adding queries from context menu
+- Use common history of used servers
+
 * Tue Sep 1 2026 Andris Pavēnis <andris.pavenis@fmi.fi> 26.9.1-1.fmi
 - Structural, anti-aliasing-aware image comparison with MINOR and CHECK tiers
 - Optional HTTP keep-alive, with recovery when a reused connection is dropped

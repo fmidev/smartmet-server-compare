@@ -17,3 +17,7 @@
 /compare/.deps/
 *.o
 *.tar.gz
+.dirstamp
+/tmp
+*~
+*.tar.gz

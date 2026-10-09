@@ -62,3 +62,34 @@ std::string urlencode(const std::string& input)
   }
   return out;
 }
+
+std::string strip_url_host(const std::string& input)
+{
+  const auto first = input.find_first_not_of(" \t\r\n");
+  if (first == std::string::npos)
+    return {};
+  const auto last = input.find_last_not_of(" \t\r\n");
+  std::string s = input.substr(first, last - first + 1);
+
+  if (s.front() != '/' || s.compare(0, 2, "//") == 0)
+  {
+    // Skip "scheme://" (or a protocol-relative "//"), then the authority
+    // up to the first '/', '?' or '#'.
+    std::size_t pos = 0;
+    const auto scheme_end = s.find("://");
+    if (scheme_end != std::string::npos &&
+        s.find_first_of("/?#") > scheme_end)
+      pos = scheme_end + 3;
+    else if (s.compare(0, 2, "//") == 0)
+      pos = 2;
+
+    const auto path_start = s.find_first_of("/?#", pos);
+    if (path_start == std::string::npos)
+      return "/";
+    s.erase(0, path_start);
+    if (s.front() != '/')
+      s.insert(0, "/");
+  }
+
+  return s;
+}

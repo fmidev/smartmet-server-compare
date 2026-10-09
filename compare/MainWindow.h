@@ -45,6 +45,8 @@ class MainWindow : public Gtk::Window
   // ----- RequestListView selection & editing -----
   void on_row_selected(int index);
   void on_inspect_requested(int index, RequestListView::InspectTarget target);
+  void on_request_added(int after_index, const std::string& request);
+  void rebuild_query_list();
   void on_query_edited(int index, const std::string& new_request,
                        RequestListView::EditAction action);
 

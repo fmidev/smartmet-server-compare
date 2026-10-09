@@ -86,6 +86,14 @@ class RequestListView : public Gtk::Box
     return sig_query_edited_;
   }
 
+  // Fires when the user adds a whole request through "Add request…".
+  // Arguments: the query index to insert after (-1 = append at the end),
+  // and the request string with any scheme/host part already removed.
+  sigc::signal<void(int, std::string)>& signal_request_added()
+  {
+    return sig_request_added_;
+  }
+
   static Glib::ustring status_text(CompareStatus s);
   static Glib::ustring status_markup(CompareStatus s);
 
@@ -98,6 +106,7 @@ class RequestListView : public Gtk::Box
   void on_copy_decoded();
   void on_copy_encoded();
   void on_edit_query();
+  void on_add_request();
   void emit_inspect(InspectTarget target);
   void on_filter_changed();
   bool filter_func(const Gtk::TreeModel::const_iterator& iter);
@@ -161,4 +170,5 @@ class RequestListView : public Gtk::Box
   sigc::signal<void(int)>                       sig_selected_;
   sigc::signal<void(int, InspectTarget)>        sig_inspect_;
   sigc::signal<void(int, std::string, EditAction)> sig_query_edited_;
+  sigc::signal<void(int, std::string)>          sig_request_added_;
 };

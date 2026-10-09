@@ -65,6 +65,7 @@ MainWindow::MainWindow()
   list_view_.signal_index_selected().connect(sigc::mem_fun(*this, &MainWindow::on_row_selected));
   list_view_.signal_inspect_requested().connect(sigc::mem_fun(*this, &MainWindow::on_inspect_requested));
   list_view_.signal_query_edited().connect(sigc::mem_fun(*this, &MainWindow::on_query_edited));
+  list_view_.signal_request_added().connect(sigc::mem_fun(*this, &MainWindow::on_request_added));
 
   fetch_dispatcher_.connect(sigc::mem_fun(*this, &MainWindow::on_fetch_dispatch));
   show_dispatcher_.connect(sigc::mem_fun(*this, &MainWindow::on_show_dispatch));
@@ -562,6 +563,28 @@ void MainWindow::on_query_edited(int index,
     queries_.insert(queries_.begin() + index + 1, std::move(q));
   }
 
+  rebuild_query_list();
+}
+
+void MainWindow::on_request_added(int after_index, const std::string& request)
+{
+  runner_.request_stop();
+  cancel_pending_show();
+  result_panel_.clear();
+
+  QueryInfo q;
+  q.request_string = request;
+  if (after_index >= 0 && after_index < static_cast<int>(queries_.size()))
+    queries_.insert(queries_.begin() + after_index + 1, std::move(q));
+  else
+    queries_.push_back(std::move(q));
+
+  rebuild_query_list();
+}
+
+// Rebuild the list view and results after queries_ itself was modified.
+void MainWindow::rebuild_query_list()
+{
   run_indices_.clear();
   run_filtered_ = false;
   list_view_.populate(queries_);

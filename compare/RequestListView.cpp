@@ -4,6 +4,8 @@
 
 #include <gtkmm/cellrenderertext.h>
 #include <gtkmm/clipboard.h>
+#include <gtkmm/dialog.h>
+#include <gtkmm/entry.h>
 #include <gtkmm/menuitem.h>
 #include <gtkmm/separatormenuitem.h>
 #include <gtkmm/window.h>
@@ -112,6 +114,11 @@ RequestListView::RequestListView()
   item_edit->signal_activate().connect(
       sigc::mem_fun(*this, &RequestListView::on_edit_query));
   context_menu_.append(*item_edit);
+
+  auto* item_add = Gtk::manage(new Gtk::MenuItem("Add request…"));
+  item_add->signal_activate().connect(
+      sigc::mem_fun(*this, &RequestListView::on_add_request));
+  context_menu_.append(*item_add);
 
   context_menu_.append(*Gtk::manage(new Gtk::SeparatorMenuItem()));
 
@@ -493,6 +500,62 @@ void RequestListView::on_edit_query()
     sig_query_edited_.emit(index, dlg.get_result_request(), EditAction::Replace);
   else if (resp == EditQueryDialog::RESPONSE_ADD_AFTER)
     sig_query_edited_.emit(index, dlg.get_result_request(), EditAction::AddAfter);
+}
+
+void RequestListView::on_add_request()
+{
+  auto* win = dynamic_cast<Gtk::Window*>(get_toplevel());
+  if (!win)
+    return;
+
+  Gtk::Dialog dlg("Add Request", *win, true);
+  dlg.set_default_size(760, -1);
+  dlg.add_button("Cancel", Gtk::RESPONSE_CANCEL);
+  dlg.add_button("Add",    Gtk::RESPONSE_OK);
+  dlg.set_default_response(Gtk::RESPONSE_OK);
+
+  auto* ca = dlg.get_content_area();
+  ca->set_spacing(6);
+  ca->set_border_width(10);
+
+  Gtk::Label hint("Request path, or a full URL (the scheme and host part are removed):");
+  hint.set_xalign(0.0f);
+  Gtk::Entry entry;
+  entry.set_activates_default(true);
+  entry.set_hexpand(true);
+  Gtk::Label preview;
+  preview.set_xalign(0.0f);
+  preview.set_selectable(true);
+  preview.set_ellipsize(Pango::ELLIPSIZE_END);
+
+  ca->pack_start(hint,    false, false);
+  ca->pack_start(entry,   false, false);
+  ca->pack_start(preview, false, false);
+
+  auto update_preview = [&]()
+  {
+    const std::string req = strip_url_host(entry.get_text().raw());
+    preview.set_text(req.empty() ? std::string() : "Will add: " + urldecode(req));
+    dlg.set_response_sensitive(Gtk::RESPONSE_OK, !req.empty());
+  };
+  entry.signal_changed().connect(update_preview);
+
+  // Pre-fill with the clipboard when it holds something that looks like a
+  // single request, which is the usual case (copied from a browser or log).
+  const Glib::ustring clip = Gtk::Clipboard::get()->wait_for_text();
+  if (!clip.empty() && clip.find('\n') == Glib::ustring::npos &&
+      (clip[0] == '/' || clip.find("://") != Glib::ustring::npos))
+    entry.set_text(clip);
+  update_preview();
+
+  dlg.show_all();
+  entry.grab_focus();
+  if (dlg.run() != Gtk::RESPONSE_OK)
+    return;
+
+  const std::string req = strip_url_host(entry.get_text().raw());
+  if (!req.empty())
+    sig_request_added_.emit(selected_index(), req);
 }
 
 // ---------------------------------------------------------------------------

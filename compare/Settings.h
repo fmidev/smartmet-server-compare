@@ -31,6 +31,10 @@ class Settings
                       const std::string& value,
                       int max_items = 20);
 
+  // Replace the whole history for key, then save.
+  void set_history(const std::string& key,
+                   const std::vector<std::string>& values);
+
   int  get_int(const std::string& key, int default_val) const;
   void set_int(const std::string& key, int value);
 

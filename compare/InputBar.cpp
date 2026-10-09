@@ -2,6 +2,23 @@
 
 #include <gtkmm/entry.h>
 
+#include <algorithm>
+#include <set>
+
+namespace
+{
+// History shared by the source server, server 1 and server 2 combos,
+// stored most-recent first so the cap drops the least recently used URL.
+const char* const kServerHistory = "servers";
+const int kServerHistoryMax = 40;
+
+// Per-combo keys.  Since the shared history was introduced they hold only
+// the last value used in that combo, which pre-fills it on startup.
+const char* const kSourceKey = "source_server";
+const char* const kServer1Key = "server1";
+const char* const kServer2Key = "server2";
+}  // namespace
+
 InputBar::InputBar(Settings& settings)
     : Gtk::Box(Gtk::ORIENTATION_VERTICAL, 0), settings_(settings)
 {
@@ -96,10 +113,8 @@ InputBar::InputBar(Settings& settings)
   pack_start(row3_, false, false);
 
   // ---- Initial values from Settings ----
-  load_combo(ent_source_, "source_server");
   load_combo(ent_prefix_, "prefix");
-  load_combo(ent_srv1_,   "server1");
-  load_combo(ent_srv2_,   "server2");
+  load_server_combos(true);
   spin_minutes_.set_value(settings_.get_int("minutes", 2));
   spin_concurrent_.set_value(settings_.get_int("max_concurrent", 4));
   spin_max_size_.set_value(settings_.get_int("max_size_mb", 10));
@@ -169,15 +184,15 @@ void InputBar::notify_stopping()
 
 void InputBar::save_fetch_inputs()
 {
-  save_combo(ent_source_, "source_server");
+  save_server_combo(ent_source_, kSourceKey);
   save_combo(ent_prefix_, "prefix");
   settings_.set_int("minutes", minutes());
 }
 
 void InputBar::save_compare_inputs()
 {
-  save_combo(ent_srv1_, "server1");
-  save_combo(ent_srv2_, "server2");
+  save_server_combo(ent_srv1_, kServer1Key);
+  save_server_combo(ent_srv2_, kServer2Key);
   settings_.set_int("max_concurrent", max_concurrent());
   settings_.set_int("max_size_mb", static_cast<int>(max_size_mb()));
   settings_.set_int("ignore_server_host", ignore_server_host() ? 1 : 0);
@@ -225,6 +240,70 @@ void InputBar::save_combo(Gtk::ComboBoxText& combo, const std::string& key)
     return;
   settings_.add_to_history(key, val);
   load_combo(combo, key);
+}
+
+void InputBar::load_server_combos(bool initial)
+{
+  // First start after the shared history was introduced: merge the old
+  // per-combo histories, interleaved so the most recent ones of each stay
+  // within the cap.
+  if (initial && settings_.history(kServerHistory).empty())
+  {
+    const std::vector<std::string> old[] = {settings_.history(kSourceKey),
+                                            settings_.history(kServer1Key),
+                                            settings_.history(kServer2Key)};
+    std::vector<std::string> merged;
+    std::set<std::string> seen;
+    for (std::size_t i = 0;; ++i)
+    {
+      bool any = false;
+      for (const auto& list : old)
+        if (i < list.size())
+        {
+          any = true;
+          if (seen.insert(list[i]).second)
+            merged.push_back(list[i]);
+        }
+      if (!any)
+        break;
+    }
+    if (merged.size() > static_cast<std::size_t>(kServerHistoryMax))
+      merged.resize(kServerHistoryMax);
+    if (!merged.empty())
+      settings_.set_history(kServerHistory, merged);
+  }
+
+  auto items = settings_.history(kServerHistory);
+  std::sort(items.begin(), items.end());
+
+  const std::pair<Gtk::ComboBoxText*, const char*> combos[] = {
+      {&ent_source_, kSourceKey}, {&ent_srv1_, kServer1Key}, {&ent_srv2_, kServer2Key}};
+  for (const auto& [combo, key] : combos)
+  {
+    // Keep what the user has typed; on startup use the combo's last value.
+    std::string text = combo_text(*combo);
+    if (initial)
+    {
+      const auto last = settings_.history(key);
+      text = last.empty() ? std::string() : last.front();
+    }
+
+    combo->remove_all();
+    for (const auto& item : items)
+      combo->append(item);
+    if (auto* e = dynamic_cast<Gtk::Entry*>(combo->get_child()))
+      e->set_text(text);
+  }
+}
+
+void InputBar::save_server_combo(Gtk::ComboBoxText& combo, const std::string& key)
+{
+  const std::string val = combo_text(combo);
+  if (val.empty())
+    return;
+  settings_.add_to_history(key, val, 1);
+  settings_.add_to_history(kServerHistory, val, kServerHistoryMax);
+  load_server_combos(false);
 }
 
 // ---------------------------------------------------------------------------

@@ -102,6 +102,17 @@ std::vector<std::string> Settings::history(const std::string& key) const
   return result;
 }
 
+void Settings::set_history(const std::string& key,
+                           const std::vector<std::string>& values)
+{
+  Json::Value arr(Json::arrayValue);
+  for (const auto& v : values)
+    arr.append(v);
+  impl_->data["history"][key] = arr;
+
+  save();
+}
+
 void Settings::add_to_history(const std::string& key,
                                const std::string& value,
                                int max_items)

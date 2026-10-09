@@ -71,6 +71,11 @@ class InputBar : public Gtk::Box
   void load_combo(Gtk::ComboBoxText& combo, const std::string& key);
   void save_combo(Gtk::ComboBoxText& combo, const std::string& key);
 
+  // The source server, server 1 and server 2 combos share one history,
+  // shown alphabetically; see load_server_combos().
+  void load_server_combos(bool initial);
+  void save_server_combo(Gtk::ComboBoxText& combo, const std::string& key);
+
   static std::string combo_text(const Gtk::ComboBoxText& combo);
   static void setup_combo_entry(Gtk::ComboBoxText& combo,
                                 const char* placeholder,

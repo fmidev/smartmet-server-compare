@@ -522,12 +522,12 @@ void RequestListView::on_add_request()
   ca->set_border_width(10);
 
   Gtk::Label hint("Request path, or a full URL (the scheme and host part are removed):");
-  hint.set_xalign(0.0f);
+  hint.set_xalign(0.0F);
   Gtk::Entry entry;
   entry.set_activates_default(true);
   entry.set_hexpand(true);
   Gtk::Label preview;
-  preview.set_xalign(0.0f);
+  preview.set_xalign(0.0F);
   preview.set_selectable(true);
   preview.set_ellipsize(Pango::ELLIPSIZE_END);
 

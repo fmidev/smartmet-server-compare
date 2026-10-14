@@ -288,7 +288,8 @@ class SerialParser
     out.items.reserve(n);
     for (std::size_t i = 0; i < n; ++i)
     {
-      SerialNode key, value;
+      SerialNode key;
+      SerialNode value;
       if (!parse_value(key)) return false;
       if (!parse_value(value)) return false;
       out.items.emplace_back(std::move(key), std::move(value));
@@ -432,11 +433,10 @@ std::pair<std::string, std::string> format_for_diff(ContentKind kind, const std:
         writerBuilder["indentation"] = "  ";
         return {Json::writeString(writerBuilder, j), {}};
       }
-      else
-      {
-        // Fall back to raw text so the user can still see the content
+      
+              // Fall back to raw text so the user can still see the content
         return {body, std::string("JSON parse error: ") + errs};
-      }
+     
     }
 
     case ContentKind::XML:

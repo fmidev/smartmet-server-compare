@@ -23,13 +23,13 @@ InputBar::InputBar(Settings& settings)
     : Gtk::Box(Gtk::ORIENTATION_VERTICAL, 0), settings_(settings)
 {
   // ---- Row 1 ----
-  lbl_source_.set_xalign(1.0f);
+  lbl_source_.set_xalign(1.0F);
   setup_combo_entry(ent_source_, "http://host:port", 30);
 
-  lbl_prefix_.set_xalign(1.0f);
+  lbl_prefix_.set_xalign(1.0F);
   setup_combo_entry(ent_prefix_, "/wfs", 10);
 
-  lbl_minutes_.set_xalign(1.0f);
+  lbl_minutes_.set_xalign(1.0F);
   spin_minutes_.set_range(1, 1440);
   spin_minutes_.set_increments(1, 10);
   spin_minutes_.set_width_chars(5);
@@ -54,18 +54,18 @@ InputBar::InputBar(Settings& settings)
   row1_.pack_start(btn_save_file_, false, false);
 
   // ---- Row 2 ----
-  lbl_srv1_.set_xalign(1.0f);
+  lbl_srv1_.set_xalign(1.0F);
   setup_combo_entry(ent_srv1_, "http://server1:port", 28);
 
-  lbl_srv2_.set_xalign(1.0f);
+  lbl_srv2_.set_xalign(1.0F);
   setup_combo_entry(ent_srv2_, "http://server2:port", 28);
 
-  lbl_concurrent_.set_xalign(1.0f);
+  lbl_concurrent_.set_xalign(1.0F);
   spin_concurrent_.set_range(1, 32);
   spin_concurrent_.set_increments(1, 4);
   spin_concurrent_.set_width_chars(4);
 
-  lbl_max_size_.set_xalign(1.0f);
+  lbl_max_size_.set_xalign(1.0F);
   spin_max_size_.set_range(0, 1024);
   spin_max_size_.set_increments(1, 10);
   spin_max_size_.set_width_chars(4);

@@ -30,7 +30,7 @@ EditQueryDialog::EditQueryDialog(Gtk::Window& parent,
   // ---- Path row ----
   auto* path_row = Gtk::manage(new Gtk::Box(Gtk::ORIENTATION_HORIZONTAL, 6));
   auto* path_lbl = Gtk::manage(new Gtk::Label("Path:"));
-  path_lbl->set_xalign(1.0f);
+  path_lbl->set_xalign(1.0F);
   path_lbl->set_size_request(80, -1);
   path_entry_.set_hexpand(true);
   path_entry_.signal_changed().connect(
@@ -45,7 +45,7 @@ EditQueryDialog::EditQueryDialog(Gtk::Window& parent,
   // ---- Parameters section header ----
   auto* ph_row  = Gtk::manage(new Gtk::Box(Gtk::ORIENTATION_HORIZONTAL, 6));
   auto* ph_lbl  = Gtk::manage(new Gtk::Label("Parameters:"));
-  ph_lbl->set_xalign(0.0f);
+  ph_lbl->set_xalign(0.0F);
   auto* add_btn = Gtk::manage(new Gtk::Button("Add parameter"));
   add_btn->signal_clicked().connect([this] { add_param_row(); });
   ph_row->pack_start(*ph_lbl,  true,  true);
@@ -64,7 +64,7 @@ EditQueryDialog::EditQueryDialog(Gtk::Window& parent,
   // ---- URL preview ----
   auto* prev_row = Gtk::manage(new Gtk::Box(Gtk::ORIENTATION_HORIZONTAL, 6));
   auto* prev_lbl = Gtk::manage(new Gtk::Label("URL preview:"));
-  prev_lbl->set_xalign(1.0f);
+  prev_lbl->set_xalign(1.0F);
   prev_lbl->set_size_request(80, -1);
   preview_entry_.set_editable(false);
   preview_entry_.set_hexpand(true);

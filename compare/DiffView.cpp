@@ -270,7 +270,8 @@ std::vector<PlanLine> build_plan(const DiffView::PreparedDiff& prepared)
       continue;
     }
 
-    std::vector<int> del_idx, add_idx;
+    std::vector<int> del_idx;
+    std::vector<int> add_idx;
     while (i < ses.size() && ses[i].second.type != dtl::SES_COMMON)
     {
       (ses[i].second.type == dtl::SES_DELETE ? del_idx : add_idx)
@@ -362,7 +363,7 @@ DiffView::DiffView(Settings* settings)
   init_column(right_col_, right_label_, right_scroll_, right_view_);
 
   // Nav row: prev/next diff buttons + info label.
-  diff_info_label_.set_xalign(0.0f);
+  diff_info_label_.set_xalign(0.0F);
   diff_info_label_.set_margin_start(8);
   nav_row_.set_margin_start(4);
   nav_row_.set_margin_end(4);
@@ -442,7 +443,7 @@ DiffView::DiffView(Settings* settings)
     btn_search_prev_.signal_clicked().connect([this] { search_jump(-1); });
     btn_search_next_.signal_clicked().connect([this] { search_jump(+1); });
     search_info_label_.set_width_chars(12);
-    search_info_label_.set_xalign(0.0f);
+    search_info_label_.set_xalign(0.0F);
     search_bar_.set_margin_top(2);
     search_bar_.set_margin_bottom(2);
     search_bar_.set_margin_start(4);
@@ -518,7 +519,7 @@ void DiffView::init_column(Gtk::Box& col,
                            Gtk::ScrolledWindow& scroll,
                            Gtk::TextView& view)
 {
-  lbl.set_xalign(0.0f);
+  lbl.set_xalign(0.0F);
   lbl.set_margin_start(4);
   lbl.set_margin_top(2);
   lbl.set_margin_bottom(2);
@@ -647,7 +648,8 @@ DiffView::compute_diff(const std::string& text1,
   {
     if (ses[i].second.type == dtl::SES_COMMON) { ++i; continue; }
 
-    std::vector<std::string> dels, adds;
+    std::vector<std::string> dels;
+    std::vector<std::string> adds;
     while (i < ses.size() && ses[i].second.type != dtl::SES_COMMON)
     {
       if (ses[i].second.type == dtl::SES_DELETE)
@@ -1143,7 +1145,8 @@ void DiffView::run_search()
                                 Glib::RefPtr<Gtk::TextBuffer> buf,
                                 const Glib::RefPtr<Gtk::TextBuffer::Tag>& hit_tag)
   {
-    Gtk::TextIter ms, me;
+    Gtk::TextIter ms;
+    Gtk::TextIter me;
     auto it = buf->begin();
     const auto lim = buf->end();
     while (it.forward_search(query, Gtk::TEXT_SEARCH_TEXT_ONLY, ms, me, lim)) {

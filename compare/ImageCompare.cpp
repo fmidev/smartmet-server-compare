@@ -89,8 +89,14 @@ inline double blendWhite(double c, double a)
 double colorDelta(const uint8_t* a, const uint8_t* b, std::size_t i, std::size_t j,
                   bool onlyY = false)
 {
-  double r1 = a[i], g1 = a[i + 1], b1 = a[i + 2], a1 = a[i + 3];
-  double r2 = b[j], g2 = b[j + 1], b2 = b[j + 2], a2 = b[j + 3];
+  double r1 = a[i];
+  double g1 = a[i + 1];
+  double b1 = a[i + 2];
+  double a1 = a[i + 3];
+  double r2 = b[j];
+  double g2 = b[j + 1];
+  double b2 = b[j + 2];
+  double a2 = b[j + 3];
   if (a1 == a2 && r1 == r2 && g1 == g2 && b1 == b2)
     return 0;
   if (a1 < 255)
@@ -107,7 +113,8 @@ double colorDelta(const uint8_t* a, const uint8_t* b, std::size_t i, std::size_t
     g2 = blendWhite(g2, a2);
     b2 = blendWhite(b2, a2);
   }
-  const double y1 = rgb2y(r1, g1, b1), y2 = rgb2y(r2, g2, b2);
+  const double y1 = rgb2y(r1, g1, b1);
+  const double y2 = rgb2y(r2, g2, b2);
   const double y = y1 - y2;
   if (onlyY)
     return y;
@@ -119,8 +126,10 @@ double colorDelta(const uint8_t* a, const uint8_t* b, std::size_t i, std::size_t
 
 bool hasManySiblings(const uint8_t* img, int x1, int y1, int w, int h)
 {
-  const int x0 = std::max(x1 - 1, 0), y0 = std::max(y1 - 1, 0);
-  const int x2 = std::min(x1 + 1, w - 1), y2 = std::min(y1 + 1, h - 1);
+  const int x0 = std::max(x1 - 1, 0);
+  const int y0 = std::max(y1 - 1, 0);
+  const int x2 = std::min(x1 + 1, w - 1);
+  const int y2 = std::min(y1 + 1, h - 1);
   const std::size_t pos = (std::size_t(y1) * w + x1) * 4;
   int zeroes = (x1 == x0 || x1 == x2 || y1 == y0 || y1 == y2) ? 1 : 0;
   for (int x = x0; x <= x2; ++x)
@@ -143,12 +152,18 @@ bool hasManySiblings(const uint8_t* img, int x1, int y1, int w, int h)
 // against `other`.
 bool antialiased(const uint8_t* img, int x1, int y1, int w, int h, const uint8_t* other)
 {
-  const int x0 = std::max(x1 - 1, 0), y0 = std::max(y1 - 1, 0);
-  const int x2 = std::min(x1 + 1, w - 1), y2 = std::min(y1 + 1, h - 1);
+  const int x0 = std::max(x1 - 1, 0);
+  const int y0 = std::max(y1 - 1, 0);
+  const int x2 = std::min(x1 + 1, w - 1);
+  const int y2 = std::min(y1 + 1, h - 1);
   const std::size_t pos = (std::size_t(y1) * w + x1) * 4;
   int zeroes = (x1 == x0 || x1 == x2 || y1 == y0 || y1 == y2) ? 1 : 0;
-  double mn = 0, mx = 0;
-  int minX = -1, minY = -1, maxX = -1, maxY = -1;
+  double mn = 0;
+  double mx = 0;
+  int minX = -1;
+  int minY = -1;
+  int maxX = -1;
+  int maxY = -1;
   for (int x = x0; x <= x2; ++x)
     for (int y = y0; y <= y2; ++y)
     {
@@ -200,7 +215,8 @@ ImageDiffResult structural_image_diff(const std::string& blob1,
   Magick::Image im1(mb1);
   Magick::Image im2(mb2);
 
-  const std::size_t w = im1.columns(), h = im1.rows();
+  const std::size_t w = im1.columns();
+  const std::size_t h = im1.rows();
   res.computed = true;
   res.width = w;
   res.height = h;
@@ -213,7 +229,8 @@ ImageDiffResult structural_image_diff(const std::string& blob1,
   if (w == 0 || h == 0)
     return res;
 
-  std::vector<uint8_t> a(w * h * 4), b(w * h * 4);
+  std::vector<uint8_t> a(w * h * 4);
+  std::vector<uint8_t> b(w * h * 4);
   im1.write(0, 0, w, h, "RGBA", Magick::CharPixel, a.data());
   im2.write(0, 0, w, h, "RGBA", Magick::CharPixel, b.data());
 
@@ -262,7 +279,8 @@ ImageDiffResult structural_image_diff(const std::string& blob1,
         for (int dy = -1; dy <= 1; ++dy)
           for (int dx = -1; dx <= 1; ++dx)
           {
-            const int nx = cx + dx, ny = cy + dy;
+            const int nx = cx + dx;
+            const int ny = cy + dy;
             if (nx < 0 || ny < 0 || nx >= (int)w || ny >= (int)h)
               continue;
             const std::size_t ni = std::size_t(ny) * w + nx;

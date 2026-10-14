@@ -44,7 +44,7 @@ size_t header_cb(char* ptr, size_t size, size_t nmemb, void* userdata)
 
 // Debug callback used only to capture the outgoing request headers
 // (CURLINFO_HEADER_OUT).  Other debug types are ignored.
-int debug_cb(CURL*, curl_infotype type, char* data, size_t size, void* userptr)
+int debug_cb(CURL* /*unused*/, curl_infotype type, char* data, size_t size, void* userptr)
 {
   if (type == CURLINFO_HEADER_OUT)
   {
@@ -152,7 +152,7 @@ void HttpClient::stop()
 
 namespace
 {
-int progress_cb(void* clientp, curl_off_t, curl_off_t, curl_off_t, curl_off_t)
+int progress_cb(void* clientp, curl_off_t /*unused*/, curl_off_t /*unused*/, curl_off_t /*unused*/, curl_off_t /*unused*/)
 {
   auto* stopped = static_cast<std::atomic<bool>*>(clientp);
   return stopped->load() ? 1 : 0;  // non-zero aborts the transfer

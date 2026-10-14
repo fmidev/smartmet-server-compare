@@ -20,12 +20,15 @@ struct Settings::Impl
 // Helpers
 // ---------------------------------------------------------------------------
 
-static std::filesystem::path settings_path()
+namespace
+{
+std::filesystem::path settings_path()
 {
   const char* home = std::getenv("HOME");
   std::filesystem::path base = home ? home : ".";
   return base / ".local" / "share" / "smartmet-server-compare" / "history.json";
 }
+}  // namespace
 
 // ---------------------------------------------------------------------------
 // Settings

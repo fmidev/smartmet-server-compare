@@ -15,7 +15,9 @@
 // Internal helpers
 // ---------------------------------------------------------------------------
 
-static std::string make_admin_url(const std::string& server_url, int minutes)
+namespace
+{
+std::string make_admin_url(const std::string& server_url, int minutes)
 {
   std::string base = server_url;
   if (!base.empty() && base.back() == '/')
@@ -23,6 +25,7 @@ static std::string make_admin_url(const std::string& server_url, int minutes)
   return base + "/admin?what=lastrequests&format=json&minutes=" +
          std::to_string(minutes);
 }
+}  // namespace
 
 // ---------------------------------------------------------------------------
 // QueryFetcher
@@ -99,13 +102,15 @@ std::pair<std::vector<QueryInfo>, std::string> QueryFetcher::fetch(const std::st
   return {std::move(queries), {}};
 }
 
+namespace
+{
 // Parse a SmartMet server access-log line of the form
 //   192.168.14.21 - - [2026-04-23T10:10:02,479843] "GET /path?… HTTP/1.0" 200 …
 // On success returns true and fills `request_out` with the request path +
 // query and `time_out` with the first timestamp.  All matching lines are
 // imported regardless of status code; the user can weed out failures by
 // re-running the comparison.
-static bool parse_access_log_line(const std::string& line,
+bool parse_access_log_line(const std::string& line,
                                   std::string& request_out,
                                   std::string& time_out)
 {
@@ -120,6 +125,7 @@ static bool parse_access_log_line(const std::string& line,
   time_out = m[1].str();
   return true;
 }
+}  // namespace
 
 /* static */
 FileLoadResult QueryFetcher::fetch_from_file(const std::filesystem::path& path)

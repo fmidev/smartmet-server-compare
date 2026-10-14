@@ -2,6 +2,7 @@
 
 #include "Settings.h"
 
+#include <algorithm>
 #include <dtl/dtl.hpp>
 
 #include <algorithm>
@@ -38,11 +39,13 @@ struct DiffView::PreparedDiff
 // Host-normalisation helpers (used by compute_diff)
 // ---------------------------------------------------------------------------
 
+namespace
+{
 // Return sorted, non-overlapping [start, end) character spans in `line` where
 // host_port (and, if host_port contains a ':', the bare host without port)
 // appears.  Bare-host spans that are already covered by a host:port span are
 // not added separately.
-static DiffView::HostSpanList find_host_spans(const std::string& line,
+DiffView::HostSpanList find_host_spans(const std::string& line,
                                                const std::string& host_port)
 {
   DiffView::HostSpanList spans;
@@ -83,7 +86,7 @@ static DiffView::HostSpanList find_host_spans(const std::string& line,
 
 // Normalise `line` for equality comparison: replace each host_port span
 // (and bare-host span, if port is present) with a fixed placeholder.
-static std::string normalize_line_for_cmp(const std::string& line,
+std::string normalize_line_for_cmp(const std::string& line,
                                            const std::string& host_port)
 {
   const auto spans = find_host_spans(line, host_port);
@@ -106,7 +109,7 @@ static std::string normalize_line_for_cmp(const std::string& line,
 // Internal helpers
 // ---------------------------------------------------------------------------
 
-static std::vector<std::string> split_lines(const std::string& text)
+std::vector<std::string> split_lines(const std::string& text)
 {
   std::vector<std::string> lines;
   std::istringstream ss(text);
@@ -116,7 +119,7 @@ static std::vector<std::string> split_lines(const std::string& text)
   return lines;
 }
 
-static CharSes char_ses(const std::string& from, const std::string& to)
+CharSes char_ses(const std::string& from, const std::string& to)
 {
   dtl::Diff<char, std::string> d(from, to);
   d.compose();
@@ -135,7 +138,7 @@ static CharSes char_ses(const std::string& from, const std::string& to)
 //   keep_type    – SES_DELETE for the left/delete pane, SES_ADD for the right/insert pane
 //                  characters with this type (or SES_COMMON) are part of our text;
 //                  characters of the opposite type belong to the other pane only
-static void insert_line(Glib::RefPtr<Gtk::TextBuffer>&          buf,
+void insert_line(Glib::RefPtr<Gtk::TextBuffer>&          buf,
                         Glib::RefPtr<Gtk::TextMark>&             mark,
                         const std::string&                       text,
                         const Glib::RefPtr<Gtk::TextBuffer::Tag>& line_tag,
@@ -203,7 +206,7 @@ static void insert_line(Glib::RefPtr<Gtk::TextBuffer>&          buf,
 }
 
 // Insert an empty placeholder line at mark.
-static void insert_placeholder(Glib::RefPtr<Gtk::TextBuffer>&          buf,
+void insert_placeholder(Glib::RefPtr<Gtk::TextBuffer>&          buf,
                                 Glib::RefPtr<Gtk::TextMark>&             mark,
                                 const Glib::RefPtr<Gtk::TextBuffer::Tag>& tag)
 {
@@ -213,7 +216,7 @@ static void insert_placeholder(Glib::RefPtr<Gtk::TextBuffer>&          buf,
 }
 
 // Insert a one-line marker standing in for a run of hidden lines.
-static void insert_skip(Glib::RefPtr<Gtk::TextBuffer>&          buf,
+void insert_skip(Glib::RefPtr<Gtk::TextBuffer>&          buf,
                          Glib::RefPtr<Gtk::TextMark>&             mark,
                          const std::string&                       text,
                          const Glib::RefPtr<Gtk::TextBuffer::Tag>& tag)
@@ -222,6 +225,7 @@ static void insert_skip(Glib::RefPtr<Gtk::TextBuffer>&          buf,
   buf->insert(mark->get_iter(), text + "\n");
   buf->apply_tag(tag, buf->get_iter_at_offset(start), mark->get_iter());
 }
+}  // namespace
 
 // ---------------------------------------------------------------------------
 // Render plan
@@ -243,7 +247,9 @@ struct PlanLine
 };
 }  // namespace
 
-static std::vector<PlanLine> build_plan(const DiffView::PreparedDiff& prepared)
+namespace
+{
+std::vector<PlanLine> build_plan(const DiffView::PreparedDiff& prepared)
 {
   const auto& ses = prepared.ses;
   const bool host_norm = !prepared.pair_is_host_only.empty();
@@ -304,7 +310,7 @@ static std::vector<PlanLine> build_plan(const DiffView::PreparedDiff& prepared)
 
 // Which plan lines actually get inserted: every difference plus `context`
 // lines on each side of it.
-static std::vector<bool> visible_lines(const std::vector<PlanLine>& plan,
+std::vector<bool> visible_lines(const std::vector<PlanLine>& plan,
                                         bool full_text,
                                         int context)
 {
@@ -343,6 +349,7 @@ static std::vector<bool> visible_lines(const std::vector<PlanLine>& plan,
   }
   return keep;
 }
+}  // namespace
 
 // ---------------------------------------------------------------------------
 // DiffView – construction
@@ -933,7 +940,7 @@ void DiffView::update_diff_info_label()
 
 void DiffView::scroll_to_line(int line)
 {
-  if (line < 0) line = 0;
+  line = std::max(line, 0);
   auto buf = left_view_.get_buffer();
   auto iter = buf->get_iter_at_line(line);
   // Scroll both views; within_margin 0.0, align 0.2 keeps the target line a

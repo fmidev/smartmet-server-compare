@@ -14,7 +14,9 @@
 // One-time Magick++ initialisation (thread-safe after C++11)
 // ---------------------------------------------------------------------------
 
-static void ensure_magick_init()
+namespace
+{
+void ensure_magick_init()
 {
   static bool once = [] {
     Magick::InitializeMagick(nullptr);
@@ -22,6 +24,7 @@ static void ensure_magick_init()
   }();
   (void)once;
 }
+}  // namespace
 
 // ---------------------------------------------------------------------------
 // Public API

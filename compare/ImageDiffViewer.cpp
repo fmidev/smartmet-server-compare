@@ -66,13 +66,15 @@ ImageDiffViewer::~ImageDiffViewer()
 // Format helpers
 // ---------------------------------------------------------------------------
 
+namespace
+{
 // Extract a human-readable format tag from the Content-Type header, e.g.
 // "image/png; charset=..."    → "PNG"
 // "image/svg+xml"             → "SVG"
 // "application/pdf"           → "PDF"
 // "image/jpeg"                → "JPEG"
 // An empty input falls back to the semantic content-kind label.
-static std::string short_format_tag(const std::string& content_type, ContentKind kind)
+std::string short_format_tag(const std::string& content_type, ContentKind kind)
 {
   const auto slash = content_type.find('/');
   if (slash != std::string::npos)
@@ -90,6 +92,7 @@ static std::string short_format_tag(const std::string& content_type, ContentKind
   }
   return content_kind_label(kind);
 }
+}  // namespace
 
 // ---------------------------------------------------------------------------
 // ResultViewer interface

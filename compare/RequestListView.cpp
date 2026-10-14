@@ -208,14 +208,14 @@ void RequestListView::reset_row(const Gtk::TreeModel::Row& row)
 
 void RequestListView::reset_to_pending()
 {
-  for (auto& row : store_->children())
+  for (const auto& row : store_->children())
     reset_row(row);
 }
 
 void RequestListView::reset_to_pending(const std::vector<int>& indices)
 {
   const std::set<int> wanted(indices.begin(), indices.end());
-  for (auto& row : store_->children())
+  for (const auto& row : store_->children())
   {
     const int idx = row[columns_.col_index];
     if (wanted.count(idx) != 0)
@@ -223,7 +223,9 @@ void RequestListView::reset_to_pending(const std::vector<int>& indices)
   }
 }
 
-static Glib::ustring format_psnr(double psnr)
+namespace
+{
+Glib::ustring format_psnr(double psnr)
 {
   if (std::isnan(psnr))
     return "";
@@ -234,7 +236,7 @@ static Glib::ustring format_psnr(double psnr)
   return oss.str();
 }
 
-static std::string format_bytes(std::size_t bytes)
+std::string format_bytes(std::size_t bytes)
 {
   constexpr double KB = 1024.0;
   constexpr double MB = 1024.0 * 1024.0;
@@ -252,7 +254,7 @@ static std::string format_bytes(std::size_t bytes)
   return oss.str();
 }
 
-static Glib::ustring format_size_pair(std::size_t s1, std::size_t s2)
+Glib::ustring format_size_pair(std::size_t s1, std::size_t s2)
 {
   if (s1 == 0 && s2 == 0)
     return "";
@@ -265,7 +267,7 @@ static Glib::ustring format_size_pair(std::size_t s1, std::size_t s2)
 
 // Zero status code means the request never produced an HTTP reply (typically
 // a DNS / TCP / TLS error); render those as a dash so the cell stays compact.
-static Glib::ustring format_http_pair(int c1, int c2)
+Glib::ustring format_http_pair(int c1, int c2)
 {
   if (c1 == 0 && c2 == 0)
     return "";
@@ -276,10 +278,11 @@ static Glib::ustring format_http_pair(int c1, int c2)
     return Glib::ustring(a);
   return Glib::ustring(a + " / " + b);
 }
+}  // namespace
 
 void RequestListView::update_status(const CompareResult& result)
 {
-  for (auto& row : store_->children())
+  for (const auto& row : store_->children())
   {
     if (row[columns_.col_index] == result.index)
     {

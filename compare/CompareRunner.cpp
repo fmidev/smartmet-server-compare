@@ -90,8 +90,10 @@ void CompareRunner::on_dispatch()
 // Host-normalization helpers
 // ---------------------------------------------------------------------------
 
+namespace
+{
 // Extract "host:port" (or just "host") from a URL like "http://host:port/path".
-static std::string extract_host_port(const std::string& url)
+std::string extract_host_port(const std::string& url)
 {
   const auto sep = url.find("://");
   if (sep == std::string::npos) return {};
@@ -103,7 +105,7 @@ static std::string extract_host_port(const std::string& url)
 }
 
 // Replace every non-overlapping occurrence of needle in s with repl.
-static std::string str_replace_all(std::string s,
+std::string str_replace_all(std::string s,
                                     const std::string& needle,
                                     const std::string& repl)
 {
@@ -111,7 +113,7 @@ static std::string str_replace_all(std::string s,
   std::string out;
   out.reserve(s.size());
   std::size_t pos = 0;
-  std::size_t found;
+  std::size_t found = 0;
   while ((found = s.find(needle, pos)) != std::string::npos)
   {
     out.append(s, pos, found - pos);
@@ -124,7 +126,7 @@ static std::string str_replace_all(std::string s,
 
 // Replace all occurrences of the server's hostname (and hostname:port) in text
 // with "SERVER_HOST" so that host-only URL differences don't show as diffs.
-static std::string normalize_server_host(std::string text, const std::string& base_url)
+std::string normalize_server_host(std::string text, const std::string& base_url)
 {
   const std::string host_port = extract_host_port(base_url);
   if (host_port.empty()) return text;
@@ -148,12 +150,13 @@ static std::string normalize_server_host(std::string text, const std::string& ba
 
 // Ensure server_url ends without a slash so that
 // server_url + request_string (which starts with /) is well-formed.
-static std::string normalize_base(const std::string& url)
+std::string normalize_base(const std::string& url)
 {
   if (!url.empty() && url.back() == '/')
     return url.substr(0, url.size() - 1);
   return url;
 }
+}  // namespace
 
 void CompareRunner::worker(std::vector<QueryInfo> queries,
                            std::vector<int> indices,
@@ -334,7 +337,7 @@ void CompareRunner::worker(std::vector<QueryInfo> queries,
           }
 
           const bool use_text = !result.formatted1.empty() || !result.formatted2.empty();
-          bool equal;
+          bool equal = false;
           if (use_text && ignore_host)
           {
             // Equality check on normalized copies so host-URL-only differences

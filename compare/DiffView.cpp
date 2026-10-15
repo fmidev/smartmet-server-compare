@@ -61,7 +61,7 @@ DiffView::HostSpanList find_host_spans(const std::string& line,
   for (std::size_t p = 0;
        (p = line.find(host_port, p)) != std::string::npos;
        p += host_port.size())
-    spans.push_back({p, p + host_port.size()});
+    spans.emplace_back(p, p + host_port.size());
 
   // Bare host occurrences (only when host_port contains a port).
   const auto colon = host_port.find(':');
@@ -75,7 +75,7 @@ DiffView::HostSpanList find_host_spans(const std::string& line,
            p += host_only.size())
       {
         if (!overlaps(p, p + host_only.size()))
-          spans.push_back({p, p + host_only.size()});
+          spans.emplace_back(p, p + host_only.size());
       }
     }
   }

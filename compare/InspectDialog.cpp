@@ -143,7 +143,7 @@ void InspectDialog::start_request()
         cancel_watcher.join();
 
         {
-          std::lock_guard<std::mutex> lock(mutex_);
+          std::scoped_lock lock(mutex_);
           if (want1) resp1_ = client.response("s1");
           if (want2) resp2_ = client.response("s2");
           finished_ = true;
@@ -157,7 +157,7 @@ void InspectDialog::on_done()
   HttpClient::Response r1;
   HttpClient::Response r2;
   {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::scoped_lock lock(mutex_);
     if (!finished_)
       return;
     r1 = std::move(resp1_);

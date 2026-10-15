@@ -170,8 +170,8 @@ FileLoadResult QueryFetcher::fetch_from_file(const std::filesystem::path& path)
     }
     else if (!parse_access_log_line(line, req, time_utc))
     {
-      problematic_lines.push_back({line_number,
-          "Does not match request path (starts with '/') or access-log format"});
+      problematic_lines.emplace_back(line_number,
+          "Does not match request path (starts with '/') or access-log format");
       continue;
     }
 

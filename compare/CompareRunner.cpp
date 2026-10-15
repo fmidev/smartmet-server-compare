@@ -51,7 +51,7 @@ void CompareRunner::start(std::vector<QueryInfo> queries,
 void CompareRunner::request_stop()
 {
   stop_requested_ = true;
-  std::lock_guard<std::mutex> lock(active_queries_mutex_);
+  std::scoped_lock lock(active_queries_mutex_);
   for (auto* client : active_queries_)
     client->stop();
 }
@@ -70,7 +70,7 @@ void CompareRunner::on_dispatch()
   std::deque<CompareResult> local;
   bool done = false;
   {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::scoped_lock lock(mutex_);
     local.swap(result_queue_);
     done = done_pending_;
     done_pending_ = false;
@@ -190,7 +190,7 @@ void CompareRunner::worker(std::vector<QueryInfo> queries,
       result.status = CompareStatus::RUNNING;
 
       {
-        std::lock_guard<std::mutex> lock(mutex_);
+        std::scoped_lock lock(mutex_);
         result_queue_.push_back(result);
       }
       dispatcher_.emit();
@@ -200,12 +200,12 @@ void CompareRunner::worker(std::vector<QueryInfo> queries,
       client.add("s2", base2 + q.request_string);
 
       {
-        std::lock_guard<std::mutex> lock(active_queries_mutex_);
+        std::scoped_lock lock(active_queries_mutex_);
         active_queries_.insert(&client);
       }
       client.execute();
       {
-        std::lock_guard<std::mutex> lock(active_queries_mutex_);
+        std::scoped_lock lock(active_queries_mutex_);
         active_queries_.erase(&client);
       }
 
@@ -355,7 +355,7 @@ void CompareRunner::worker(std::vector<QueryInfo> queries,
       }
 
       {
-        std::lock_guard<std::mutex> lock(mutex_);
+        std::scoped_lock lock(mutex_);
         result_queue_.push_back(std::move(result));
       }
       dispatcher_.emit();
@@ -371,7 +371,7 @@ void CompareRunner::worker(std::vector<QueryInfo> queries,
     t.join();
 
   {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::scoped_lock lock(mutex_);
     done_pending_ = true;
   }
   dispatcher_.emit();

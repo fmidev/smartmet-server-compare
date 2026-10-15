@@ -120,7 +120,7 @@ void MainWindow::on_fetch_requested()
       minutes,
       [this](std::vector<QueryInfo> queries, std::string error)
       {
-        std::lock_guard<std::mutex> lock(fetch_mutex_);
+        std::scoped_lock lock(fetch_mutex_);
         fetch_result_ = {std::move(queries), std::move(error)};
         fetch_dispatcher_.emit();
       });
@@ -130,7 +130,7 @@ void MainWindow::on_fetch_dispatch()
 {
   std::pair<std::vector<QueryInfo>, std::string> result;
   {
-    std::lock_guard<std::mutex> lock(fetch_mutex_);
+    std::scoped_lock lock(fetch_mutex_);
     result = std::move(fetch_result_);
   }
 
@@ -730,7 +730,7 @@ void MainWindow::kick_show_worker(int index)
         if (cancel->load()) return;
 
         {
-          std::lock_guard<std::mutex> lock(show_mutex_);
+          std::scoped_lock lock(show_mutex_);
           show_ready_ = {index, viewer, std::move(prepared),
                          std::move(server1), std::move(server2)};
         }
@@ -742,7 +742,7 @@ void MainWindow::on_show_dispatch()
 {
   ShowReady r;
   {
-    std::lock_guard<std::mutex> lock(show_mutex_);
+    std::scoped_lock lock(show_mutex_);
     r = std::move(show_ready_);
     show_ready_ = {};
   }

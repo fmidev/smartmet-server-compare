@@ -194,8 +194,6 @@ class SerialParser
     return parse_value(out) && pos_ == src_.size();
   }
 
-  std::size_t position() const { return pos_; }
-
  private:
   bool parse_value(SerialNode& out)
   {

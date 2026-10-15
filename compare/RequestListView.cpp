@@ -37,7 +37,7 @@ RequestListView::RequestListView()
 
   cb_http_.append("All");
   cb_http_.append("2XX both");
-  cb_http_.append(u8"Same ≥400");
+  cb_http_.append("Same ≥400");
   cb_http_.append("Different");
   cb_http_.set_active(0);
 

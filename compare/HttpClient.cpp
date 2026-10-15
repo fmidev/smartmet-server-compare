@@ -116,6 +116,9 @@ struct MultiHandleCache
   }
 
   ~MultiHandleCache() { reset(); }
+  MultiHandleCache() = default;
+  MultiHandleCache(const MultiHandleCache&) = delete;
+  MultiHandleCache& operator=(const MultiHandleCache&) = delete;
 };
 
 MultiHandleCache& thread_cache()
@@ -302,9 +305,11 @@ std::vector<std::string> HttpClient::perform(const std::vector<std::string>& ids
         curl_easy_getinfo(easy, CURLINFO_NUM_CONNECTS, &connects) == CURLE_OK;
     const bool used_cached_connection = have_connects && connects == 0;
 
-    if (msg->data.result != CURLE_OK)
+    // NOLINTNEXTLINE(cppcoreguidelines-pro-type-union-access): libcurl's CURLMsg API
+    const CURLcode result = msg->data.result;
+    if (result != CURLE_OK)
     {
-      resp.error = curl_easy_strerror(msg->data.result);
+      resp.error = curl_easy_strerror(result);
 
       // Only a failure on a connection we took from the cache is a candidate
       // for the fresh-connection retry.  A failure on a connection libcurl had
@@ -312,7 +317,7 @@ std::vector<std::string> HttpClient::perform(const std::vector<std::string>& ids
       // (and libcurl has already done its own retry by then, which is why this
       // does not loop).
       if (keep_alive_ && !fresh_connect && used_cached_connection &&
-          is_dropped_connection(msg->data.result))
+          is_dropped_connection(result))
       {
         retryable.push_back(it->second);
       }

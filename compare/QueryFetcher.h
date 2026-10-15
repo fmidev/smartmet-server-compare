@@ -48,6 +48,9 @@ class QueryFetcher
   void fetch_async(std::string server_url, std::string prefix, int minutes, Callback cb);
 
   ~QueryFetcher();
+  QueryFetcher() = default;
+  QueryFetcher(const QueryFetcher&) = delete;
+  QueryFetcher& operator=(const QueryFetcher&) = delete;
 
  private:
   std::thread thread_;

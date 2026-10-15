@@ -32,6 +32,8 @@ class MainWindow : public Gtk::Window
  public:
   MainWindow();
   ~MainWindow() override;
+  MainWindow(const MainWindow&) = delete;
+  MainWindow& operator=(const MainWindow&) = delete;
 
  private:
   // ----- InputBar signal handlers -----

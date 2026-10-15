@@ -38,6 +38,8 @@ class InspectDialog : public Gtk::Dialog
                 Target      target = Target::Both);
 
   ~InspectDialog() override;
+  InspectDialog(const InspectDialog&) = delete;
+  InspectDialog& operator=(const InspectDialog&) = delete;
 
  private:
   void start_request();

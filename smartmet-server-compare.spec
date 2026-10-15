@@ -62,6 +62,7 @@ rm -rf $RPM_BUILD_ROOT
 * Wed Oct 14 2026 Mika Heiskanen <mika.heiskanen@fmi.fi> - 26.10.14-1.fmi
 - Fixed mechanical clang-tidy findings (internal linkage, unused parameters, initialization, redundant code), no functional changes
 - Fixed clang-tidy style findings (loops, nested conditionals, dead code)
+- Fixed clang-tidy correctness findings (member initialization, rule of five, printf formats, dead stores)
 
 * Fri Oct 9 2026 Andris Pavēnis <andris.pavenis@fmi.fi> 26.10.9.fmi
 - Support adding queries from context menu

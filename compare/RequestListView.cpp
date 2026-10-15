@@ -404,6 +404,8 @@ bool RequestListView::filter_func(const Gtk::TreeModel::const_iterator& iter)
       if (raw_status != CompareStatus::ERROR &&
           raw_status != CompareStatus::TOO_LARGE) return false;
       break;
+    default:
+      break;
   }
 
   // ---- HTTP status filter ----
@@ -424,6 +426,8 @@ bool RequestListView::filter_func(const Gtk::TreeModel::const_iterator& iter)
         break;
       case 3:  // Different
         if (c1 == c2) return false;
+        break;
+      default:
         break;
     }
   }

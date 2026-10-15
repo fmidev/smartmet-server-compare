@@ -619,6 +619,8 @@ bool MainWindow::on_key_press_event(GdkEventKey* event)
       case GDK_KEY_q:
         close();
         return true;
+      default:
+        break;
     }
   }
 
@@ -631,6 +633,8 @@ bool MainWindow::on_key_press_event(GdkEventKey* event)
     case GDK_KEY_Escape:
       on_stop_requested();
       return true;
+    default:
+      break;
   }
 
   return Gtk::Window::on_key_press_event(event);

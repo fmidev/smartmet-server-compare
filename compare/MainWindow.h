@@ -60,7 +60,7 @@ class MainWindow : public Gtk::Window
   // ----- Background-worker callbacks (main thread) -----
   void on_fetch_dispatch();
   void on_queries_fetched(std::vector<QueryInfo> queries);
-  void on_compare_result(CompareResult result);
+  void on_compare_result(const CompareResult& result);
   void on_compare_done();
 
   // ----- Helpers -----

@@ -365,7 +365,7 @@ void MainWindow::on_stop_requested()
   status_panel_.set_status("Stopping…");
 }
 
-void MainWindow::on_compare_result(CompareResult result)
+void MainWindow::on_compare_result(const CompareResult& result)
 {
   if (result.status == CompareStatus::RUNNING)
   {

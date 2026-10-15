@@ -187,8 +187,8 @@ FileLoadResult QueryFetcher::fetch_from_file(const std::filesystem::path& path)
   return {std::move(queries), {}, std::move(problematic_lines)};
 }
 
-void QueryFetcher::fetch_async(std::string server_url,
-                               std::string prefix,
+void QueryFetcher::fetch_async(const std::string& server_url,
+                               const std::string& prefix,
                                int minutes,
                                Callback cb)
 {

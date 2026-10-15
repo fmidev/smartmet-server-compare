@@ -160,8 +160,8 @@ std::string normalize_base(const std::string& url)
 
 void CompareRunner::worker(std::vector<QueryInfo> queries,
                            std::vector<int> indices,
-                           std::string server1_url,
-                           std::string server2_url,
+                           const std::string& server1_url,
+                           const std::string& server2_url,
                            int max_concurrent,
                            size_t max_size,
                            bool ignore_host,

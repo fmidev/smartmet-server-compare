@@ -1142,7 +1142,7 @@ void DiffView::run_search()
 
   // Collect matches from one buffer and add to search_hits_.
   auto collect = [this, &query](bool left_pane,
-                                Glib::RefPtr<Gtk::TextBuffer> buf,
+                                const Glib::RefPtr<Gtk::TextBuffer>& buf,
                                 const Glib::RefPtr<Gtk::TextBuffer::Tag>& hit_tag)
   {
     Gtk::TextIter ms;

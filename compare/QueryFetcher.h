@@ -45,7 +45,7 @@ class QueryFetcher
 
   // Asynchronous fetch from server – spawns a background thread, calls cb on
   // *that* thread when done.  The caller dispatches the result to the main thread.
-  void fetch_async(std::string server_url, std::string prefix, int minutes, Callback cb);
+  void fetch_async(const std::string& server_url, const std::string& prefix, int minutes, Callback cb);
 
   ~QueryFetcher();
   QueryFetcher() = default;

@@ -3,9 +3,9 @@
 
 #include <json/json.h>
 
+#include <cctype>
 #include <fstream>
 #include <optional>
-#include <regex>
 #include <string>
 #include <unordered_set>
 #include <utility>
@@ -114,15 +114,72 @@ bool parse_access_log_line(const std::string& line,
                                   std::string& request_out,
                                   std::string& time_out)
 {
-  static const std::regex re(
-      R"(^\S+\s+\S+\s+\S+\s+\[([^\]]+)\]\s+\"(GET|POST|HEAD)\s+(\S+)\s+HTTP/\S+\"\s+\d+\b.*$)");
+  // Equivalent to the regular expression
+  //   ^\S+\s+\S+\s+\S+\s+\[([^\]]+)\]\s+"(GET|POST|HEAD)\s+(\S+)\s+HTTP/\S+"\s+\d+\b.*$
+  // without a regex library
+  std::size_t pos = 0;
+  const auto is_space = [](char c) { return std::isspace(static_cast<unsigned char>(c)) != 0; };
+  const auto skip_spaces = [&]()
+  {
+    const auto start = pos;
+    while (pos < line.size() && is_space(line[pos]))
+      ++pos;
+    return pos > start;
+  };
+  const auto token = [&]()
+  {
+    const auto start = pos;
+    while (pos < line.size() && !is_space(line[pos]))
+      ++pos;
+    return line.substr(start, pos - start);
+  };
 
-  std::smatch m;
-  if (!std::regex_match(line, m, re))
+  // remote host, identity and user
+  for (int i = 0; i < 3; i++)
+    if (token().empty() || !skip_spaces())
+      return false;
+
+  // [timestamp]
+  if (pos >= line.size() || line[pos] != '[')
+    return false;
+  const auto close = line.find(']', pos + 1);
+  if (close == std::string::npos || close == pos + 1)
+    return false;
+  const std::string timestamp = line.substr(pos + 1, close - pos - 1);
+  pos = close + 1;
+  if (!skip_spaces())
     return false;
 
-  request_out = m[3].str();
-  time_out = m[1].str();
+  // "METHOD request HTTP/x.y"
+  if (pos >= line.size() || line[pos] != '"')
+    return false;
+  ++pos;
+  const std::string method = token();
+  if (method != "GET" && method != "POST" && method != "HEAD")
+    return false;
+  if (!skip_spaces())
+    return false;
+  const std::string request = token();
+  if (request.empty() || !skip_spaces())
+    return false;
+  const std::string protocol = token();
+  if (protocol.size() < 7 || protocol.compare(0, 5, "HTTP/") != 0 || protocol.back() != '"')
+    return false;
+
+  // status code
+  if (!skip_spaces())
+    return false;
+  const auto digits = pos;
+  while (pos < line.size() && std::isdigit(static_cast<unsigned char>(line[pos])) != 0)
+    ++pos;
+  if (pos == digits)
+    return false;
+  if (pos < line.size() &&
+      (std::isalnum(static_cast<unsigned char>(line[pos])) != 0 || line[pos] == '_'))
+    return false;
+
+  request_out = request;
+  time_out = timestamp;
   return true;
 }
 }  // namespace

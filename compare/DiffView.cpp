@@ -717,6 +717,71 @@ void DiffView::on_view_mode_changed()
     render_prepared(true);
 }
 
+namespace
+{
+// The text buffers of the panes and the insertion marks in them
+struct Panes
+{
+  Glib::RefPtr<Gtk::TextBuffer>& lbuf;
+  Glib::RefPtr<Gtk::TextMark>& lmark;
+  Glib::RefPtr<Gtk::TextBuffer>& rbuf;
+  Glib::RefPtr<Gtk::TextMark>& rmark;
+};
+
+// The tags for the differing lines
+struct PaneTags
+{
+  const Glib::RefPtr<Gtk::TextBuffer::Tag>& del;
+  const Glib::RefPtr<Gtk::TextBuffer::Tag>& del_char;
+  const Glib::RefPtr<Gtk::TextBuffer::Tag>& ins;
+  const Glib::RefPtr<Gtk::TextBuffer::Tag>& ins_char;
+  const Glib::RefPtr<Gtk::TextBuffer::Tag>& ph_left;
+  const Glib::RefPtr<Gtk::TextBuffer::Tag>& ph_right;
+};
+
+// The marker standing in for a run of hidden lines
+std::string hidden_marker(std::size_t count)
+{
+  return "⋯ " + std::to_string(count) + " line" + (count == 1 ? "" : "s") + " hidden ⋯";
+}
+
+// Insert a differing line: a changed pair, a deleted line or an added line
+void insert_diff_line(const DiffView::PreparedDiff& prepared,
+                      const PlanLine& pl,
+                      Panes& panes,
+                      const PaneTags& tags)
+{
+  const auto& ses = prepared.ses;
+  const bool host_norm = !prepared.pair_is_host_only.empty();
+  static const DiffView::HostSpanList no_spans;
+
+  if (pl.del >= 0 && pl.add >= 0)
+  {
+    const auto& cses = prepared.paired_cses[pl.pair];
+    const auto& del_spans =
+        host_norm ? prepared.pair_host_spans[pl.pair].del_spans : no_spans;
+    const auto& add_spans =
+        host_norm ? prepared.pair_host_spans[pl.pair].add_spans : no_spans;
+    insert_line(panes.lbuf, panes.lmark, ses[pl.del].first, tags.del, tags.del_char,
+                &cses, dtl::SES_DELETE, del_spans);
+    insert_line(panes.rbuf, panes.rmark, ses[pl.add].first, tags.ins, tags.ins_char,
+                &cses, dtl::SES_ADD, add_spans);
+  }
+  else if (pl.del >= 0)
+  {
+    insert_line(panes.lbuf, panes.lmark, ses[pl.del].first, tags.del, {}, nullptr,
+                dtl::SES_DELETE);
+    insert_placeholder(panes.rbuf, panes.rmark, tags.ph_right);
+  }
+  else
+  {
+    insert_placeholder(panes.lbuf, panes.lmark, tags.ph_left);
+    insert_line(panes.rbuf, panes.rmark, ses[pl.add].first, tags.ins, {}, nullptr,
+                dtl::SES_ADD);
+  }
+}
+}  // namespace
+
 void DiffView::render_prepared(bool keep_position)
 {
   // reset_diff_navigation() below drops current_diff_, so remember it first.
@@ -739,8 +804,6 @@ void DiffView::render_prepared(bool keep_position)
 
   const auto& prepared = *last_prepared_;
   const auto& ses      = prepared.ses;
-  const bool host_norm = !prepared.pair_is_host_only.empty();
-  static const HostSpanList no_spans;
 
   const std::vector<PlanLine> plan = build_plan(prepared);
   const std::vector<bool>     keep =
@@ -748,6 +811,9 @@ void DiffView::render_prepared(bool keep_position)
 
   auto lmark = lbuf->create_mark(lbuf->end(), false);
   auto rmark = rbuf->create_mark(rbuf->end(), false);
+
+  Panes panes{lbuf, lmark, rbuf, rmark};
+  const PaneTags tags{tag_del_, tag_del_char_, tag_ins_, tag_ins_char_, tag_ph_left_, tag_ph_right_};
 
   int cur_line   = 0;   // line number in the rendered (possibly collapsed) view
   int diff_start = -1;
@@ -774,8 +840,7 @@ void DiffView::render_prepared(bool keep_position)
       const std::size_t count = q - p;
 
       flush_diff();
-      const std::string marker = "⋯ " + std::to_string(count) + " line" +
-                                 (count == 1 ? "" : "s") + " hidden ⋯";
+      const std::string marker = hidden_marker(count);
       insert_skip(lbuf, lmark, marker, tag_skip_left_);
       insert_skip(rbuf, rmark, marker, tag_skip_right_);
 
@@ -795,32 +860,10 @@ void DiffView::render_prepared(bool keep_position)
       lbuf->insert(lmark->get_iter(), ses[pl.del].first + "\n");
       rbuf->insert(rmark->get_iter(), ses[pl.add].first + "\n");
     }
-    else if (pl.del >= 0 && pl.add >= 0)
-    {
-      if (diff_start < 0) diff_start = cur_line;
-      const auto& cses = prepared.paired_cses[pl.pair];
-      const auto& del_spans =
-          host_norm ? prepared.pair_host_spans[pl.pair].del_spans : no_spans;
-      const auto& add_spans =
-          host_norm ? prepared.pair_host_spans[pl.pair].add_spans : no_spans;
-      insert_line(lbuf, lmark, ses[pl.del].first, tag_del_, tag_del_char_,
-                  &cses, dtl::SES_DELETE, del_spans);
-      insert_line(rbuf, rmark, ses[pl.add].first, tag_ins_, tag_ins_char_,
-                  &cses, dtl::SES_ADD, add_spans);
-    }
-    else if (pl.del >= 0)
-    {
-      if (diff_start < 0) diff_start = cur_line;
-      insert_line(lbuf, lmark, ses[pl.del].first, tag_del_, {}, nullptr,
-                  dtl::SES_DELETE);
-      insert_placeholder(rbuf, rmark, tag_ph_right_);
-    }
     else
     {
       if (diff_start < 0) diff_start = cur_line;
-      insert_placeholder(lbuf, lmark, tag_ph_left_);
-      insert_line(rbuf, rmark, ses[pl.add].first, tag_ins_, {}, nullptr,
-                  dtl::SES_ADD);
+      insert_diff_line(prepared, pl, panes, tags);
     }
 
     ++cur_line;

@@ -352,6 +352,51 @@ void RequestListView::on_filter_changed()
   filter_->refilter();
 }
 
+namespace
+{
+// True if the comparison status matches the status filter selection
+bool status_accepted(int status_idx, CompareStatus raw_status)
+{
+  switch (status_idx)
+  {
+    case 0:  // All
+      return true;
+    case 1:  // Equal
+      return raw_status == CompareStatus::EQUAL;
+    case 2:  // Different — every non-identical image tier (significant, check,
+             // and minor AA/edge-only)
+      return (raw_status == CompareStatus::DIFFERENT || raw_status == CompareStatus::CHECK_DIFF ||
+              raw_status == CompareStatus::MINOR_DIFF);
+    case 3:  // Error
+      return (raw_status == CompareStatus::ERROR || raw_status == CompareStatus::TOO_LARGE);
+    default:
+      return true;
+  }
+}
+
+// True if the HTTP status codes match the HTTP status filter selection
+bool http_accepted(int http_idx, int c1, int c2)
+{
+  switch (http_idx)
+  {
+    case 1:  // 2XX both
+      return !(c1 < 200 || c1 > 299 || c2 < 200 || c2 > 299);
+    case 2:  // Same ≥400
+      return !(c1 < 400 || c1 != c2);
+    case 3:  // Different
+      return c1 != c2;
+    default:
+      return true;
+  }
+}
+
+// Hide if PSNR is above the threshold (too similar) or not computed, when a threshold is set
+bool psnr_hidden(double threshold, double psnr)
+{
+  return (threshold > 0 && (std::isnan(psnr) || std::isinf(psnr) || psnr > threshold));
+}
+}  // namespace
+
 bool RequestListView::filter_func(const Gtk::TreeModel::const_iterator& iter)
 {
   const auto raw_status = static_cast<CompareStatus>(
@@ -375,38 +420,16 @@ bool RequestListView::filter_func(const Gtk::TreeModel::const_iterator& iter)
   if (content_idx == 2)
   {
     const double threshold = spin_psnr_.get_value();
-    if (threshold > 0)
-    {
-      const double psnr = (*iter)[columns_.col_psnr_val];
-      // Hide if PSNR is above the threshold (too similar) or not computed
-      if (std::isnan(psnr) || std::isinf(psnr) || psnr > threshold)
-        return false;
-    }
+    const double psnr = (*iter)[columns_.col_psnr_val];
+    if (psnr_hidden(threshold, psnr))
+      return false;
   }
 
   // ---- Status filter ----
   const int status_idx = cb_status_.get_active_row_number();
 
-  switch (status_idx)
-  {
-    case 0:  // All
-      break;
-    case 1:  // Equal
-      if (raw_status != CompareStatus::EQUAL) return false;
-      break;
-    case 2:  // Different — every non-identical image tier (significant, check,
-             // and minor AA/edge-only)
-      if (raw_status != CompareStatus::DIFFERENT &&
-          raw_status != CompareStatus::CHECK_DIFF &&
-          raw_status != CompareStatus::MINOR_DIFF) return false;
-      break;
-    case 3:  // Error
-      if (raw_status != CompareStatus::ERROR &&
-          raw_status != CompareStatus::TOO_LARGE) return false;
-      break;
-    default:
-      break;
-  }
+  if (!status_accepted(status_idx, raw_status))
+    return false;
 
   // ---- HTTP status filter ----
   const int http_idx = cb_http_.get_active_row_number();
@@ -416,20 +439,8 @@ bool RequestListView::filter_func(const Gtk::TreeModel::const_iterator& iter)
     const int c1 = (*iter)[columns_.col_http_code1];
     const int c2 = (*iter)[columns_.col_http_code2];
 
-    switch (http_idx)
-    {
-      case 1:  // 2XX both
-        if (c1 < 200 || c1 > 299 || c2 < 200 || c2 > 299) return false;
-        break;
-      case 2:  // Same ≥400
-        if (c1 < 400 || c1 != c2) return false;
-        break;
-      case 3:  // Different
-        if (c1 == c2) return false;
-        break;
-      default:
-        break;
-    }
+    if (!http_accepted(http_idx, c1, c2))
+      return false;
   }
 
   return true;

@@ -55,6 +55,9 @@ class QueryFetcher
                    Callback cb);
 
   ~QueryFetcher();
+  QueryFetcher() = default;
+  QueryFetcher(const QueryFetcher&) = delete;
+  QueryFetcher& operator=(const QueryFetcher&) = delete;
 
  private:
   std::thread thread_;

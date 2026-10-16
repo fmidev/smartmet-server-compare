@@ -2,7 +2,7 @@
 %define SPECNAME smartmet-server-compare
 
 Name: %{SPECNAME}
-Version: 26.10.9
+Version: 26.10.15
 Release: 1%{?dist}.fmi
 Summary: SmartMet Server comparison tool
 License: MIT
@@ -59,6 +59,11 @@ rm -rf $RPM_BUILD_ROOT
 %{_bindir}/smartmet-server-compare
 
 %changelog
+* Thu Oct 15 2026 Mika Heiskanen <mika.heiskanen@fmi.fi> - 26.10.15-1.fmi
+- Fixed mechanical clang-tidy findings (internal linkage, unused parameters, initialization, redundant code), no functional changes
+- Fixed clang-tidy style findings (loops, nested conditionals, dead code)
+- Fixed clang-tidy correctness findings (member initialization, rule of five, printf formats, dead stores)
+
 * Fri Oct 9 2026 Andris Pavēnis <andris.pavenis@fmi.fi> 26.10.9.fmi
 - Support adding queries from context menu
 - Use common history of used servers

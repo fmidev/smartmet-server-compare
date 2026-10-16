@@ -15,7 +15,9 @@
 // Internal helpers
 // ---------------------------------------------------------------------------
 
-static std::string_view trim_front(std::string_view s)
+namespace
+{
+std::string_view trim_front(std::string_view s)
 {
   while (!s.empty() && static_cast<unsigned char>(s.front()) <= ' ')
     s.remove_prefix(1);
@@ -23,7 +25,7 @@ static std::string_view trim_front(std::string_view s)
 }
 
 // True when ≥ 90 % of the first N bytes are printable ASCII / UTF-8 lead bytes.
-static bool looks_like_text(const std::string& body, std::size_t sample = 512)
+bool looks_like_text(const std::string& body, std::size_t sample = 512)
 {
   if (body.empty())
     return true;
@@ -40,7 +42,7 @@ static bool looks_like_text(const std::string& body, std::size_t sample = 512)
 
 // Classify by the Content-Type string alone (returns UNKNOWN when the header
 // gives no clear answer).
-static ContentKind kind_from_header(const std::string& ct)
+ContentKind kind_from_header(const std::string& ct)
 {
   // Helper: case-insensitive substring test
   auto has = [&](const char* needle) {
@@ -75,7 +77,7 @@ static ContentKind kind_from_header(const std::string& ct)
 // payload?  The grammar always starts with a type tag followed by ':' (or
 // ';' for null).  A stricter structural check happens inside the parser;
 // this is just a fast pre-filter so plain text isn't mis-classified.
-static bool looks_like_serial(const std::string& body)
+bool looks_like_serial(const std::string& body)
 {
   if (body.size() < 4) return false;
   const char c = body[0];
@@ -96,7 +98,7 @@ static bool looks_like_serial(const std::string& body)
 }
 
 // Body sniffing – used when the header is absent / generic.
-static ContentKind sniff_body(const std::string& body)
+ContentKind sniff_body(const std::string& body)
 {
   if (body.empty())
     return ContentKind::BINARY;
@@ -152,6 +154,7 @@ static ContentKind sniff_body(const std::string& body)
 
   return looks_like_text(body) ? ContentKind::TEXT : ContentKind::BINARY;
 }
+}  // namespace
 
 // ---------------------------------------------------------------------------
 // SmartMet "serial" (PHP-serialize) pretty-printer
@@ -250,7 +253,7 @@ class SerialParser
     const std::size_t colon = src_.find(':', pos_);
     if (colon == std::string::npos) return false;
     const std::string len_text(src_, pos_, colon - pos_);
-    std::size_t n;
+    std::size_t n = 0;
     try { n = static_cast<std::size_t>(std::stoull(len_text)); }
     catch (...) { return false; }
 
@@ -273,7 +276,7 @@ class SerialParser
     pos_ += 2;
     const std::size_t colon = src_.find(':', pos_);
     if (colon == std::string::npos) return false;
-    std::size_t n;
+    std::size_t n = 0;
     try { n = static_cast<std::size_t>(std::stoull(std::string(src_, pos_, colon - pos_))); }
     catch (...) { return false; }
 
@@ -285,7 +288,8 @@ class SerialParser
     out.items.reserve(n);
     for (std::size_t i = 0; i < n; ++i)
     {
-      SerialNode key, value;
+      SerialNode key;
+      SerialNode value;
       if (!parse_value(key)) return false;
       if (!parse_value(value)) return false;
       out.items.emplace_back(std::move(key), std::move(value));
@@ -429,11 +433,10 @@ std::pair<std::string, std::string> format_for_diff(ContentKind kind, const std:
         writerBuilder["indentation"] = "  ";
         return {Json::writeString(writerBuilder, j), {}};
       }
-      else
-      {
-        // Fall back to raw text so the user can still see the content
+      
+              // Fall back to raw text so the user can still see the content
         return {body, std::string("JSON parse error: ") + errs};
-      }
+     
     }
 
     case ContentKind::XML:

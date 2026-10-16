@@ -8,7 +8,9 @@
 // One-time libcurl global init
 // ---------------------------------------------------------------------------
 
-static void ensure_curl_init()
+namespace
+{
+void ensure_curl_init()
 {
   static bool once = [] {
     curl_global_init(CURL_GLOBAL_DEFAULT);
@@ -21,7 +23,7 @@ static void ensure_curl_init()
 // libcurl callbacks
 // ---------------------------------------------------------------------------
 
-static size_t write_cb(char* ptr, size_t size, size_t nmemb, void* userdata)
+size_t write_cb(char* ptr, size_t size, size_t nmemb, void* userdata)
 {
   auto* buf = static_cast<std::string*>(userdata);
   const size_t bytes = size * nmemb;
@@ -32,7 +34,7 @@ static size_t write_cb(char* ptr, size_t size, size_t nmemb, void* userdata)
 // Response-header callback: libcurl delivers each header line separately,
 // including the status line and the terminating blank line.  Append the
 // whole block verbatim.
-static size_t header_cb(char* ptr, size_t size, size_t nmemb, void* userdata)
+size_t header_cb(char* ptr, size_t size, size_t nmemb, void* userdata)
 {
   auto* buf = static_cast<std::string*>(userdata);
   const size_t bytes = size * nmemb;
@@ -42,7 +44,7 @@ static size_t header_cb(char* ptr, size_t size, size_t nmemb, void* userdata)
 
 // Debug callback used only to capture the outgoing request headers
 // (CURLINFO_HEADER_OUT).  Other debug types are ignored.
-static int debug_cb(CURL*, curl_infotype type, char* data, size_t size, void* userptr)
+int debug_cb(CURL* /*unused*/, curl_infotype type, char* data, size_t size, void* userptr)
 {
   if (type == CURLINFO_HEADER_OUT)
   {
@@ -53,7 +55,7 @@ static int debug_cb(CURL*, curl_infotype type, char* data, size_t size, void* us
 }
 
 // Extract bare content-type (before the first ';')
-static std::string base_content_type(const char* ct)
+std::string base_content_type(const char* ct)
 {
   if (!ct)
     return {};
@@ -66,6 +68,7 @@ static std::string base_content_type(const char* ct)
     s.pop_back();
   return s;
 }
+}  // namespace
 
 // ---------------------------------------------------------------------------
 // Per-thread connection cache
@@ -113,6 +116,9 @@ struct MultiHandleCache
   }
 
   ~MultiHandleCache() { reset(); }
+  MultiHandleCache() = default;
+  MultiHandleCache(const MultiHandleCache&) = delete;
+  MultiHandleCache& operator=(const MultiHandleCache&) = delete;
 };
 
 MultiHandleCache& thread_cache()
@@ -147,7 +153,9 @@ void HttpClient::stop()
   stopped_ = true;
 }
 
-static int progress_cb(void* clientp, curl_off_t, curl_off_t, curl_off_t, curl_off_t)
+namespace
+{
+int progress_cb(void* clientp, curl_off_t /*unused*/, curl_off_t /*unused*/, curl_off_t /*unused*/, curl_off_t /*unused*/)
 {
   auto* stopped = static_cast<std::atomic<bool>*>(clientp);
   return stopped->load() ? 1 : 0;  // non-zero aborts the transfer
@@ -156,7 +164,7 @@ static int progress_cb(void* clientp, curl_off_t, curl_off_t, curl_off_t, curl_o
 // Errors a server can produce by closing a persistent connection underneath the
 // client.  These say "the connection went away", as opposed to "the server
 // refused me" or "the name does not resolve", which a retry would not fix.
-static bool is_dropped_connection(CURLcode code)
+bool is_dropped_connection(CURLcode code)
 {
   switch (code)
   {
@@ -169,6 +177,7 @@ static bool is_dropped_connection(CURLcode code)
       return false;
   }
 }
+}  // namespace
 
 void HttpClient::execute()
 {
@@ -275,8 +284,8 @@ std::vector<std::string> HttpClient::perform(const std::vector<std::string>& ids
   }
 
   // Collect results
-  CURLMsg* msg;
-  int msgs_left;
+  CURLMsg* msg = nullptr;
+  int msgs_left = 0;
   while ((msg = curl_multi_info_read(multi, &msgs_left)))
   {
     if (msg->msg != CURLMSG_DONE)
@@ -296,9 +305,11 @@ std::vector<std::string> HttpClient::perform(const std::vector<std::string>& ids
         curl_easy_getinfo(easy, CURLINFO_NUM_CONNECTS, &connects) == CURLE_OK;
     const bool used_cached_connection = have_connects && connects == 0;
 
-    if (msg->data.result != CURLE_OK)
+    // NOLINTNEXTLINE(cppcoreguidelines-pro-type-union-access): libcurl's CURLMsg API
+    const CURLcode result = msg->data.result;
+    if (result != CURLE_OK)
     {
-      resp.error = curl_easy_strerror(msg->data.result);
+      resp.error = curl_easy_strerror(result);
 
       // Only a failure on a connection we took from the cache is a candidate
       // for the fresh-connection retry.  A failure on a connection libcurl had
@@ -306,7 +317,7 @@ std::vector<std::string> HttpClient::perform(const std::vector<std::string>& ids
       // (and libcurl has already done its own retry by then, which is why this
       // does not loop).
       if (keep_alive_ && !fresh_connect && used_cached_connection &&
-          is_dropped_connection(msg->data.result))
+          is_dropped_connection(result))
       {
         retryable.push_back(it->second);
       }

@@ -82,7 +82,7 @@ InspectDialog::InspectDialog(Gtk::Window& parent,
   notebook_.set_show_tabs(target_ == Target::Both);
 
   auto* box = get_content_area();
-  status_label_.set_xalign(0.0f);
+  status_label_.set_xalign(0.0F);
   status_label_.set_margin_start(8);
   status_label_.set_margin_top(4);
   status_label_.set_margin_bottom(4);

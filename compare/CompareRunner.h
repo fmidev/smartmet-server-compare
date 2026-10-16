@@ -30,6 +30,8 @@ class CompareRunner
  public:
   CompareRunner();
   ~CompareRunner();
+  CompareRunner(const CompareRunner&) = delete;
+  CompareRunner& operator=(const CompareRunner&) = delete;
 
   // Signals fired on the GTK main thread
   sigc::signal<void(CompareResult)>& signal_result() { return sig_result_; }

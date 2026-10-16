@@ -29,6 +29,8 @@ class ImageDiffViewer : public ResultViewer
  public:
   ImageDiffViewer();
   ~ImageDiffViewer() override;
+  ImageDiffViewer(const ImageDiffViewer&) = delete;
+  ImageDiffViewer& operator=(const ImageDiffViewer&) = delete;
 
   const char* name() const override { return "image-diff"; }
   bool can_handle(const CompareResult& result) const override;

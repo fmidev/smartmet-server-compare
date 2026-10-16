@@ -158,6 +158,223 @@ std::string normalize_base(const std::string& url)
 }
 }  // namespace
 
+namespace
+{
+// Compare two images: byte equality, PSNR and the structural difference
+void compare_images(CompareResult& result)
+{
+  if (result.body1 == result.body2)
+  {
+    // Byte-identical — skip expensive Magick++ decoding.
+    result.psnr = std::numeric_limits<double>::infinity();
+    result.status = CompareStatus::EQUAL;
+  }
+  else
+  {
+    try
+    {
+      result.psnr = compute_psnr(result.body1, result.body2);
+      // Different bytes can still decode to identical pixels (e.g.
+      // re-encoded PNGs).  Treat MSE=0 (PSNR=∞) as equal — the value
+      // still shows in the list so the match is visible.
+      if (std::isinf(result.psnr))
+      {
+        result.status = CompareStatus::EQUAL;
+      }
+      else
+      {
+        // A low PSNR alone doesn't mean the images differ significantly:
+        // WMS output is full of text and symbols whose anti-aliasing /
+        // font rendering differs harmlessly between servers, dragging
+        // PSNR down.  Judge on the structural diff — which tolerates
+        // that per-edge jitter but still catches clustered, solid
+        // changes — and keep PSNR only as an informational figure.
+        //
+        // The pixels are not identical (PSNR is finite), so this is
+        // never reported as EQUAL.  Three tiers, from the structural
+        // diff's cluster geometry:
+        //   DIFFERENT  a significant clustered change (or AA flood /
+        //              size mismatch) — image_diff.differs
+        //   CHECK_DIFF solid, non-anti-aliasing cluster(s) present but
+        //              all below the significant bar — the signature of
+        //              a small content change (e.g. a changed
+        //              label/value) that edge jitter cannot explain
+        //   MINOR_DIFF only anti-aliasing / edge jitter, no solid
+        //              cluster at all — effectively harmless
+        const auto& d = result.image_diff =
+            structural_image_diff(result.body1, result.body2);
+        if (d.differs)
+          result.status = CompareStatus::DIFFERENT;
+        else if (d.significant_pixels > 0)
+          result.status = CompareStatus::CHECK_DIFF;
+        else
+          result.status = CompareStatus::MINOR_DIFF;
+      }
+    }
+    catch (const std::exception& e)
+    {
+      result.error1 = e.what();
+      result.status = CompareStatus::ERROR;
+    }
+  }
+}
+
+// Compare an image with a text response, which is always an error
+void compare_mixed(CompareResult& result, bool img1)
+{
+  const auto& text_kind = img1 ? result.kind2 : result.kind1;
+  const auto& text_body = img1 ? result.body2 : result.body1;
+
+  auto [fmt, ferr] = format_for_diff(text_kind, text_body);
+  auto& fmt_slot = img1 ? result.formatted2 : result.formatted1;
+  auto& err_slot = img1 ? result.error2 : result.error1;
+  fmt_slot = fmt.empty() ? text_body : std::move(fmt);
+  if (!ferr.empty()) err_slot = ferr;
+
+  result.status = CompareStatus::ERROR;
+}
+
+// Compare two text responses, optionally ignoring the server host names
+void compare_texts(CompareResult& result,
+                   const std::string& base1,
+                   const std::string& base2,
+                   bool ignore_host)
+{
+  auto [fmt1, ferr1] = format_for_diff(result.kind1, result.body1);
+  auto [fmt2, ferr2] = format_for_diff(result.kind2, result.body2);
+
+  result.formatted1 = std::move(fmt1);
+  result.formatted2 = std::move(fmt2);
+
+  if (!ferr1.empty()) result.error1 = ferr1;
+  if (!ferr2.empty()) result.error2 = ferr2;
+
+  if (ignore_host)
+  {
+    result.host_port1 = extract_host_port(base1);
+    result.host_port2 = extract_host_port(base2);
+  }
+
+  const bool use_text = !result.formatted1.empty() || !result.formatted2.empty();
+  bool equal = false;
+  if (use_text && ignore_host)
+  {
+    // Equality check on normalized copies so host-URL-only differences
+    // are treated as equal without altering the displayed text.
+    equal = normalize_server_host(result.formatted1, base1) ==
+            normalize_server_host(result.formatted2, base2);
+  }
+  else
+  {
+    equal = use_text ? (result.formatted1 == result.formatted2)
+                     : (result.body1 == result.body2);
+  }
+  result.status = equal ? CompareStatus::EQUAL : CompareStatus::DIFFERENT;
+}
+
+// Copy the responses of the two servers into the result
+template <typename Response>
+void copy_responses(CompareResult& result, const Response& r1, const Response& r2)
+{
+  result.body1 = r1.body;
+  result.body2 = r2.body;
+  result.content_type1 = r1.content_type;
+  result.content_type2 = r2.content_type;
+  result.status_code1 = r1.status_code;
+  result.status_code2 = r2.status_code;
+  result.error1 = r1.error;
+  result.error2 = r2.error;
+  result.connections_reused = (r1.connection_reused ? 1 : 0) + (r2.connection_reused ? 1 : 0);
+}
+
+// Decide the comparison status of the responses
+void classify_result(CompareResult& result,
+                     size_t max_size,
+                     const std::string& base1,
+                     const std::string& base2,
+                     bool ignore_host)
+{
+  if (!result.error1.empty() || !result.error2.empty())
+  {
+    result.status = CompareStatus::ERROR;
+  }
+  else if (max_size > 0 && (result.body1.size() > max_size || result.body2.size() > max_size))
+  {
+    if (result.body1.size() > max_size)
+      result.error1 = "Response size exceeds limit";
+    if (result.body2.size() > max_size)
+      result.error2 = "Response size exceeds limit";
+    result.status = CompareStatus::TOO_LARGE;
+  }
+  else if (result.status_code1 >= 400 && result.status_code1 == result.status_code2)
+  {
+    // Both servers agree on the same error status — treat as equal without
+    // diffing bodies (error-message text differences are usually noise).
+    result.status = CompareStatus::EQUAL;
+  }
+  else
+  {
+    result.kind1 = detect_content_kind(result.content_type1, result.body1);
+    result.kind2 = detect_content_kind(result.content_type2, result.body2);
+
+    const bool img1 = is_image_kind(result.kind1);
+    const bool img2 = is_image_kind(result.kind2);
+
+    if (img1 && img2)
+      compare_images(result);
+    else if (img1 != img2)
+      compare_mixed(result, img1);
+    else
+      compare_texts(result, base1, base2, ignore_host);
+  }
+}
+}  // namespace
+
+// Compare a single query on both servers and queue the results
+void CompareRunner::run_query(const QueryInfo& q,
+                              int index,
+                              const std::string& base1,
+                              const std::string& base2,
+                              size_t max_size,
+                              bool ignore_host,
+                              bool keep_alive)
+{
+  CompareResult result;
+  result.index = index;
+  result.request_string = q.request_string;
+  result.status = CompareStatus::RUNNING;
+
+  {
+    std::scoped_lock lock(mutex_);
+    result_queue_.push_back(result);
+  }
+  dispatcher_.emit();
+
+  HttpClient client(60, keep_alive);
+  client.add("s1", base1 + q.request_string);
+  client.add("s2", base2 + q.request_string);
+
+  {
+    std::scoped_lock lock(active_queries_mutex_);
+    active_queries_.insert(&client);
+  }
+  client.execute();
+  {
+    std::scoped_lock lock(active_queries_mutex_);
+    active_queries_.erase(&client);
+  }
+
+  copy_responses(result, client.response("s1"), client.response("s2"));
+
+  classify_result(result, max_size, base1, base2, ignore_host);
+
+  {
+    std::scoped_lock lock(mutex_);
+    result_queue_.push_back(std::move(result));
+  }
+  dispatcher_.emit();
+}
+
 void CompareRunner::worker(std::vector<QueryInfo> queries,
                            std::vector<int> indices,
                            const std::string& server1_url,
@@ -183,182 +400,7 @@ void CompareRunner::worker(std::vector<QueryInfo> queries,
       if (i >= total)
         break;
 
-      const auto& q = queries[i];
-      CompareResult result;
-      result.index = remap ? indices[i] : i;
-      result.request_string = q.request_string;
-      result.status = CompareStatus::RUNNING;
-
-      {
-        std::scoped_lock lock(mutex_);
-        result_queue_.push_back(result);
-      }
-      dispatcher_.emit();
-
-      HttpClient client(60, keep_alive);
-      client.add("s1", base1 + q.request_string);
-      client.add("s2", base2 + q.request_string);
-
-      {
-        std::scoped_lock lock(active_queries_mutex_);
-        active_queries_.insert(&client);
-      }
-      client.execute();
-      {
-        std::scoped_lock lock(active_queries_mutex_);
-        active_queries_.erase(&client);
-      }
-
-      const auto& r1 = client.response("s1");
-      const auto& r2 = client.response("s2");
-
-      result.body1 = r1.body;
-      result.body2 = r2.body;
-      result.content_type1 = r1.content_type;
-      result.content_type2 = r2.content_type;
-      result.status_code1 = r1.status_code;
-      result.status_code2 = r2.status_code;
-      result.error1 = r1.error;
-      result.error2 = r2.error;
-      result.connections_reused =
-          (r1.connection_reused ? 1 : 0) + (r2.connection_reused ? 1 : 0);
-
-      if (!result.error1.empty() || !result.error2.empty())
-      {
-        result.status = CompareStatus::ERROR;
-      }
-      else if (max_size > 0 && (result.body1.size() > max_size || result.body2.size() > max_size))
-      {
-        if (result.body1.size() > max_size)
-          result.error1 = "Response size exceeds limit";
-        if (result.body2.size() > max_size)
-          result.error2 = "Response size exceeds limit";
-        result.status = CompareStatus::TOO_LARGE;
-      }
-      else if (result.status_code1 >= 400 && result.status_code1 == result.status_code2)
-      {
-        // Both servers agree on the same error status — treat as equal without
-        // diffing bodies (error-message text differences are usually noise).
-        result.status = CompareStatus::EQUAL;
-      }
-      else
-      {
-        result.kind1 = detect_content_kind(result.content_type1, result.body1);
-        result.kind2 = detect_content_kind(result.content_type2, result.body2);
-
-        const bool img1 = is_image_kind(result.kind1);
-        const bool img2 = is_image_kind(result.kind2);
-
-        if (img1 && img2)
-        {
-          if (result.body1 == result.body2)
-          {
-            // Byte-identical — skip expensive Magick++ decoding.
-            result.psnr = std::numeric_limits<double>::infinity();
-            result.status = CompareStatus::EQUAL;
-          }
-          else
-          {
-            try
-            {
-              result.psnr = compute_psnr(result.body1, result.body2);
-              // Different bytes can still decode to identical pixels (e.g.
-              // re-encoded PNGs).  Treat MSE=0 (PSNR=∞) as equal — the value
-              // still shows in the list so the match is visible.
-              if (std::isinf(result.psnr))
-              {
-                result.status = CompareStatus::EQUAL;
-              }
-              else
-              {
-                // A low PSNR alone doesn't mean the images differ significantly:
-                // WMS output is full of text and symbols whose anti-aliasing /
-                // font rendering differs harmlessly between servers, dragging
-                // PSNR down.  Judge on the structural diff — which tolerates
-                // that per-edge jitter but still catches clustered, solid
-                // changes — and keep PSNR only as an informational figure.
-                //
-                // The pixels are not identical (PSNR is finite), so this is
-                // never reported as EQUAL.  Three tiers, from the structural
-                // diff's cluster geometry:
-                //   DIFFERENT  a significant clustered change (or AA flood /
-                //              size mismatch) — image_diff.differs
-                //   CHECK_DIFF solid, non-anti-aliasing cluster(s) present but
-                //              all below the significant bar — the signature of
-                //              a small content change (e.g. a changed
-                //              label/value) that edge jitter cannot explain
-                //   MINOR_DIFF only anti-aliasing / edge jitter, no solid
-                //              cluster at all — effectively harmless
-                const auto& d = result.image_diff =
-                    structural_image_diff(result.body1, result.body2);
-                if (d.differs)
-                  result.status = CompareStatus::DIFFERENT;
-                else if (d.significant_pixels > 0)
-                  result.status = CompareStatus::CHECK_DIFF;
-                else
-                  result.status = CompareStatus::MINOR_DIFF;
-              }
-            }
-            catch (const std::exception& e)
-            {
-              result.error1 = e.what();
-              result.status = CompareStatus::ERROR;
-            }
-          }
-        }
-        else if (img1 != img2)
-        {
-          const auto& text_kind = img1 ? result.kind2 : result.kind1;
-          const auto& text_body = img1 ? result.body2 : result.body1;
-
-          auto [fmt, ferr] = format_for_diff(text_kind, text_body);
-          auto& fmt_slot = img1 ? result.formatted2 : result.formatted1;
-          auto& err_slot = img1 ? result.error2 : result.error1;
-          fmt_slot = fmt.empty() ? text_body : std::move(fmt);
-          if (!ferr.empty()) err_slot = ferr;
-
-          result.status = CompareStatus::ERROR;
-        }
-        else
-        {
-          auto [fmt1, ferr1] = format_for_diff(result.kind1, result.body1);
-          auto [fmt2, ferr2] = format_for_diff(result.kind2, result.body2);
-
-          result.formatted1 = std::move(fmt1);
-          result.formatted2 = std::move(fmt2);
-
-          if (!ferr1.empty()) result.error1 = ferr1;
-          if (!ferr2.empty()) result.error2 = ferr2;
-
-          if (ignore_host)
-          {
-            result.host_port1 = extract_host_port(base1);
-            result.host_port2 = extract_host_port(base2);
-          }
-
-          const bool use_text = !result.formatted1.empty() || !result.formatted2.empty();
-          bool equal = false;
-          if (use_text && ignore_host)
-          {
-            // Equality check on normalized copies so host-URL-only differences
-            // are treated as equal without altering the displayed text.
-            equal = normalize_server_host(result.formatted1, base1) ==
-                    normalize_server_host(result.formatted2, base2);
-          }
-          else
-          {
-            equal = use_text ? (result.formatted1 == result.formatted2)
-                             : (result.body1 == result.body2);
-          }
-          result.status = equal ? CompareStatus::EQUAL : CompareStatus::DIFFERENT;
-        }
-      }
-
-      {
-        std::scoped_lock lock(mutex_);
-        result_queue_.push_back(std::move(result));
-      }
-      dispatcher_.emit();
+      run_query(queries[i], remap ? indices[i] : i, base1, base2, max_size, ignore_host, keep_alive);
     }
   };
 

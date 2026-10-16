@@ -66,6 +66,14 @@ class CompareRunner
   bool is_running() const { return running_.load(); }
 
  private:
+  void run_query(const QueryInfo& q,
+                 int index,
+                 const std::string& base1,
+                 const std::string& base2,
+                 size_t max_size,
+                 bool ignore_host,
+                 bool keep_alive);
+
   void worker(std::vector<QueryInfo> queries,
               std::vector<int> indices,
               const std::string& server1_url,

@@ -177,6 +177,67 @@ bool is_dropped_connection(CURLcode code)
       return false;
   }
 }
+
+// Store the status code and the bare content type of a successful transfer
+void store_status_and_content_type(CURL* easy, HttpClient::Response& resp)
+{
+  long code = 0;
+  curl_easy_getinfo(easy, CURLINFO_RESPONSE_CODE, &code);
+  resp.status_code = static_cast<int>(code);
+
+  char* ct = nullptr;
+  curl_easy_getinfo(easy, CURLINFO_CONTENT_TYPE, &ct);
+  resp.content_type = base_content_type(ct);
+}
+
+// Create an easy handle for a GET of url whose response goes to resp, or nullptr on failure
+CURL* create_easy_handle(const std::string& url,
+                         HttpClient::Response& resp,
+                         int timeout_sec,
+                         std::atomic<bool>* stopped,
+                         bool keep_alive,
+                         bool fresh_connect)
+{
+  CURL* easy = curl_easy_init();
+  if (!easy)
+    return nullptr;
+
+  curl_easy_setopt(easy, CURLOPT_URL, url.c_str());
+  curl_easy_setopt(easy, CURLOPT_TIMEOUT, static_cast<long>(timeout_sec));
+  curl_easy_setopt(easy, CURLOPT_FOLLOWLOCATION, 1L);
+  curl_easy_setopt(easy, CURLOPT_WRITEFUNCTION, write_cb);
+  curl_easy_setopt(easy, CURLOPT_WRITEDATA, &resp.body);
+
+  // Capture headers in both directions for "curl -v" style transcripts.
+  curl_easy_setopt(easy, CURLOPT_HEADERFUNCTION, header_cb);
+  curl_easy_setopt(easy, CURLOPT_HEADERDATA, &resp.response_headers);
+  curl_easy_setopt(easy, CURLOPT_VERBOSE, 1L);
+  curl_easy_setopt(easy, CURLOPT_DEBUGFUNCTION, debug_cb);
+  curl_easy_setopt(easy, CURLOPT_DEBUGDATA, &resp.request_headers);
+
+  // Progress callback for cancellation support
+  curl_easy_setopt(easy, CURLOPT_XFERINFOFUNCTION, progress_cb);
+  curl_easy_setopt(easy, CURLOPT_XFERINFODATA, stopped);
+  curl_easy_setopt(easy, CURLOPT_NOPROGRESS, 0L);
+
+  // Accept any encoding the server might use
+  curl_easy_setopt(easy, CURLOPT_ACCEPT_ENCODING, "");
+
+  if (!keep_alive)
+  {
+    // Belt and braces: the private multi handle is destroyed below anyway,
+    // but this also makes libcurl announce "Connection: close" so the server
+    // is told not to hold the socket open on its side either.
+    curl_easy_setopt(easy, CURLOPT_FORBID_REUSE, 1L);
+  }
+  else if (fresh_connect)
+  {
+    // Retry of a request whose cached connection the server dropped: skip the
+    // cache entirely.  The new connection is still kept for later requests.
+    curl_easy_setopt(easy, CURLOPT_FRESH_CONNECT, 1L);
+  }
+  return easy;
+}
 }  // namespace
 
 void HttpClient::execute()
@@ -229,44 +290,10 @@ std::vector<std::string> HttpClient::perform(const std::vector<std::string>& ids
   {
     auto& req = requests_[id];
 
-    CURL* easy = curl_easy_init();
+    CURL* easy = create_easy_handle(
+        req.url, req.resp, timeout_sec_, &stopped_, keep_alive_, fresh_connect);
     if (!easy)
       continue;
-
-    curl_easy_setopt(easy, CURLOPT_URL, req.url.c_str());
-    curl_easy_setopt(easy, CURLOPT_TIMEOUT, static_cast<long>(timeout_sec_));
-    curl_easy_setopt(easy, CURLOPT_FOLLOWLOCATION, 1L);
-    curl_easy_setopt(easy, CURLOPT_WRITEFUNCTION, write_cb);
-    curl_easy_setopt(easy, CURLOPT_WRITEDATA, &req.resp.body);
-
-    // Capture headers in both directions for "curl -v" style transcripts.
-    curl_easy_setopt(easy, CURLOPT_HEADERFUNCTION, header_cb);
-    curl_easy_setopt(easy, CURLOPT_HEADERDATA, &req.resp.response_headers);
-    curl_easy_setopt(easy, CURLOPT_VERBOSE, 1L);
-    curl_easy_setopt(easy, CURLOPT_DEBUGFUNCTION, debug_cb);
-    curl_easy_setopt(easy, CURLOPT_DEBUGDATA, &req.resp.request_headers);
-
-    // Progress callback for cancellation support
-    curl_easy_setopt(easy, CURLOPT_XFERINFOFUNCTION, progress_cb);
-    curl_easy_setopt(easy, CURLOPT_XFERINFODATA, &stopped_);
-    curl_easy_setopt(easy, CURLOPT_NOPROGRESS, 0L);
-
-    // Accept any encoding the server might use
-    curl_easy_setopt(easy, CURLOPT_ACCEPT_ENCODING, "");
-
-    if (!keep_alive_)
-    {
-      // Belt and braces: the private multi handle is destroyed below anyway,
-      // but this also makes libcurl announce "Connection: close" so the server
-      // is told not to hold the socket open on its side either.
-      curl_easy_setopt(easy, CURLOPT_FORBID_REUSE, 1L);
-    }
-    else if (fresh_connect)
-    {
-      // Retry of a request whose cached connection the server dropped: skip the
-      // cache entirely.  The new connection is still kept for later requests.
-      curl_easy_setopt(easy, CURLOPT_FRESH_CONNECT, 1L);
-    }
 
     curl_multi_add_handle(multi, easy);
     handle_to_id[easy] = id;
@@ -325,14 +352,7 @@ std::vector<std::string> HttpClient::perform(const std::vector<std::string>& ids
     else
     {
       resp.connection_reused = keep_alive_ && used_cached_connection;
-
-      long code = 0;
-      curl_easy_getinfo(easy, CURLINFO_RESPONSE_CODE, &code);
-      resp.status_code = static_cast<int>(code);
-
-      char* ct = nullptr;
-      curl_easy_getinfo(easy, CURLINFO_CONTENT_TYPE, &ct);
-      resp.content_type = base_content_type(ct);
+      store_status_and_content_type(easy, resp);
     }
   }
 

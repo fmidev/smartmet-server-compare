@@ -1,9 +1,15 @@
 %define DIRNAME smartmet-server-compare
 %define SPECNAME smartmet-server-compare
 
+%if 0%{?rhel} && 0%{rhel} < 9
+%define smartmet_boost boost169
+%else
+%define smartmet_boost boost
+%endif
+
 Name: %{SPECNAME}
 Version: 26.10.16
-Release: 1%{?dist}.fmi
+Release: 2%{?dist}.fmi
 Summary: SmartMet Server comparison tool
 License: MIT
 URL: https://github.com/fmidev/smartmet-server-compare
@@ -21,6 +27,7 @@ BuildRequires: jsoncpp-devel
 BuildRequires: libcurl-devel
 BuildRequires: pkgconf-pkg-config
 BuildRequires: ImageMagick-c++-devel
+BuildRequires: %{smartmet_boost}-devel
 
 %if 0%{?rhel} >= 10
 BuildRequires: gtkmm3.0-devel
@@ -33,6 +40,7 @@ Requires: gtkmm30
 Requires: tinyxml2
 Requires: jsoncpp
 Requires: libcurl
+Requires: %{smartmet_boost}-regex
 Requires: ImageMagick-c++
 Requires: adwaita-icon-theme
 
@@ -59,6 +67,9 @@ rm -rf $RPM_BUILD_ROOT
 %{_bindir}/smartmet-server-compare
 
 %changelog
+* Fri Oct 16 2026 Mika Heiskanen <mika.heiskanen@fmi.fi> - 26.10.16-2.fmi
+- The query match filter uses boost::regex instead of std::regex
+
 * Fri Oct 16 2026 Mika Heiskanen <mika.heiskanen@fmi.fi> - 26.10.16-1.fmi
 - Optional match regex filter for fetching queries
 - The access log import no longer uses std::regex

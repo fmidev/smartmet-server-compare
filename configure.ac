@@ -18,6 +18,16 @@ PKG_CHECK_MODULES([CURL], [libcurl])
 AC_CHECK_LIB([tinyxml2], [main], [], [AC_MSG_ERROR([libtinyxml2 not found])])
 AC_CHECK_LIB([jsoncpp], [main], [], [AC_MSG_ERROR([libjsoncpp not found])])
 
+# Boost.Regex (never std::regex). RHEL 8 uses boost169 in its own directories.
+BOOST_CPPFLAGS=""
+BOOST_LDFLAGS=""
+if test -d /usr/include/boost169; then
+  BOOST_CPPFLAGS="-isystem /usr/include/boost169"
+  BOOST_LDFLAGS="-L/usr/lib64/boost169"
+fi
+AC_SUBST([BOOST_CPPFLAGS])
+AC_SUBST([BOOST_LDFLAGS])
+
 # GCC 8 (RHEL 8) needs -lstdc++fs for std::filesystem
 AC_MSG_CHECKING([whether -lstdc++fs is needed for std::filesystem])
 AC_LINK_IFELSE(

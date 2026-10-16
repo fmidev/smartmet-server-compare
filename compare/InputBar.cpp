@@ -1,9 +1,9 @@
 #include "InputBar.h"
+#include <boost/regex.hpp>
 
 #include <gtkmm/entry.h>
 
 #include <algorithm>
-#include <regex>
 #include <set>
 
 namespace
@@ -301,9 +301,9 @@ void InputBar::on_regex_changed()
   {
     try
     {
-      std::regex re(text, std::regex::ECMAScript);
+      boost::regex re(text, boost::regex::ECMAScript);
     }
-    catch (const std::regex_error& e)
+    catch (const boost::regex_error& e)
     {
       error = e.what();
     }

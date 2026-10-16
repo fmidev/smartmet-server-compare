@@ -1,12 +1,12 @@
 #include "QueryFetcher.h"
 #include "HttpClient.h"
+#include <boost/regex.hpp>
 
 #include <json/json.h>
 
 #include <cctype>
 #include <fstream>
 #include <optional>
-#include <regex>
 #include <string>
 #include <unordered_set>
 #include <utility>
@@ -38,14 +38,14 @@ std::pair<std::vector<QueryInfo>, std::string> QueryFetcher::fetch(const std::st
                                                                     const std::string& match_regex,
                                                                     int minutes)
 {
-  std::optional<std::regex> match_re;
+  std::optional<boost::regex> match_re;
   if (!match_regex.empty())
   {
     try
     {
-      match_re.emplace(match_regex, std::regex::ECMAScript | std::regex::optimize);
+      match_re.emplace(match_regex, boost::regex::ECMAScript | boost::regex::optimize);
     }
-    catch (const std::regex_error& e)
+    catch (const boost::regex_error& e)
     {
       return {{}, "Invalid match regex: " + std::string(e.what())};
     }
@@ -99,7 +99,7 @@ std::pair<std::vector<QueryInfo>, std::string> QueryFetcher::fetch(const std::st
         continue;
       if (!prefix.empty() && rs.substr(0, prefix.size()) != prefix)
         continue;
-      if (match_re && !std::regex_search(rs, *match_re))
+      if (match_re && !boost::regex_search(rs, *match_re))
         continue;
       if (!seen.insert(rs).second)
         continue;

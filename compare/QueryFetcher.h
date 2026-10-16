@@ -12,7 +12,7 @@
  * Fetches the "lastrequests" list from a SmartMet server's admin endpoint,
  * parses the JSON response, and keeps entries whose RequestString starts with
  * a given prefix and, if a match regex is given, contains a match for it
- * (ECMAScript syntax, std::regex_search).
+ * (ECMAScript syntax, boost::regex_search).
  *
  * Alternatively, queries can be loaded from a text file.  Two formats are
  * auto-detected per line:

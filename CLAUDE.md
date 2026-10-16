@@ -56,7 +56,7 @@ All source lives in `compare/`:
 
 `QueryFetcher::fetch()` keeps a lastrequests entry only if it starts with
 the prefix *and*, when the "Match (regex)" field is non-empty, contains a
-match for that regex (`std::regex_search`, ECMAScript, case-sensitive) —
+match for that regex (`boost::regex_search`, ECMAScript, case-sensitive) —
 e.g. `who=MobileWeather` to pick the mobile app's requests.
 `InputBar::on_regex_changed()` compiles the regex on every edit; an
 invalid one marks the entry with the `error` style class and a warning

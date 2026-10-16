@@ -5,6 +5,7 @@ smartmet_server_compare_CXXFLAGS = \
 	$(GTKMM_CFLAGS) \
 	$(MAGICK_CFLAGS) \
 	$(CURL_CFLAGS) \
+	$(BOOST_CPPFLAGS) \
 	-Wall -Wextra -Wno-unused-parameter
 
 smartmet_server_compare_LDADD = \
@@ -12,7 +13,9 @@ smartmet_server_compare_LDADD = \
 	$(MAGICK_LIBS) \
 	$(CURL_LIBS) \
 	-ltinyxml2 \
-	-ljsoncpp
+	-ljsoncpp \
+	$(BOOST_LDFLAGS) \
+	-lboost_regex
 
 SPEC = smartmet-server-compare.spec
 

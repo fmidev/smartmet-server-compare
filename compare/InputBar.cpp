@@ -23,6 +23,30 @@ const char* const kServer2Key = "server2";
 // prefix-only "prefix" history, which seeds it once.
 const char* const kFilterHistory = "fetch_filters";
 const char* const kOldPrefixKey = "prefix";
+
+// Interleave the lists, dropping duplicates, so the first items of each list come first
+std::vector<std::string> interleave_unique(const std::vector<std::string>* lists, std::size_t n)
+{
+  std::vector<std::string> merged;
+  std::set<std::string> seen;
+  for (std::size_t i = 0;; ++i)
+  {
+    bool any = false;
+    for (std::size_t k = 0; k < n; ++k)
+    {
+      const auto& list = lists[k];
+      if (i < list.size())
+      {
+        any = true;
+        if (seen.insert(list[i]).second)
+          merged.push_back(list[i]);
+      }
+    }
+    if (!any)
+      break;
+  }
+  return merged;
+}
 }  // namespace
 
 InputBar::InputBar(Settings& settings)
@@ -336,21 +360,7 @@ void InputBar::load_server_combos(bool initial)
     const std::vector<std::string> old[] = {settings_.history(kSourceKey),
                                             settings_.history(kServer1Key),
                                             settings_.history(kServer2Key)};
-    std::vector<std::string> merged;
-    std::set<std::string> seen;
-    for (std::size_t i = 0;; ++i)
-    {
-      bool any = false;
-      for (const auto& list : old)
-        if (i < list.size())
-        {
-          any = true;
-          if (seen.insert(list[i]).second)
-            merged.push_back(list[i]);
-        }
-      if (!any)
-        break;
-    }
+    std::vector<std::string> merged = interleave_unique(old, std::size(old));
     if (merged.size() > static_cast<std::size_t>(kServerHistoryMax))
       merged.resize(kServerHistoryMax);
     if (!merged.empty())

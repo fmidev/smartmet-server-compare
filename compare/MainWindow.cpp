@@ -97,6 +97,7 @@ void MainWindow::on_fetch_requested()
 {
   const std::string url    = input_bar_.source_url();
   const std::string prefix = input_bar_.prefix();
+  const std::string match_regex = input_bar_.match_regex();
   const int         minutes = input_bar_.minutes();
 
   if (url.empty())
@@ -117,6 +118,7 @@ void MainWindow::on_fetch_requested()
   fetcher_.fetch_async(
       url,
       prefix,
+      match_regex,
       minutes,
       [this](std::vector<QueryInfo> queries, std::string error)
       {

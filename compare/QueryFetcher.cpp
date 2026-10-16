@@ -31,8 +31,22 @@ static std::string make_admin_url(const std::string& server_url, int minutes)
 /* static */
 std::pair<std::vector<QueryInfo>, std::string> QueryFetcher::fetch(const std::string& server_url,
                                                                     const std::string& prefix,
+                                                                    const std::string& match_regex,
                                                                     int minutes)
 {
+  std::optional<std::regex> match_re;
+  if (!match_regex.empty())
+  {
+    try
+    {
+      match_re.emplace(match_regex, std::regex::ECMAScript | std::regex::optimize);
+    }
+    catch (const std::regex_error& e)
+    {
+      return {{}, "Invalid match regex: " + std::string(e.what())};
+    }
+  }
+
   const std::string url = make_admin_url(server_url, minutes);
 
   HttpClient client(30);
@@ -80,6 +94,8 @@ std::pair<std::vector<QueryInfo>, std::string> QueryFetcher::fetch(const std::st
       if (rs.empty())
         continue;
       if (!prefix.empty() && rs.substr(0, prefix.size()) != prefix)
+        continue;
+      if (match_re && !std::regex_search(rs, *match_re))
         continue;
       if (!seen.insert(rs).second)
         continue;
@@ -183,6 +199,7 @@ FileLoadResult QueryFetcher::fetch_from_file(const std::filesystem::path& path)
 
 void QueryFetcher::fetch_async(std::string server_url,
                                std::string prefix,
+                               std::string match_regex,
                                int minutes,
                                Callback cb)
 {
@@ -192,7 +209,7 @@ void QueryFetcher::fetch_async(std::string server_url,
   thread_ = std::thread(
       [=, cb = std::move(cb)]()
       {
-        auto [queries, error] = fetch(server_url, prefix, minutes);
+        auto [queries, error] = fetch(server_url, prefix, match_regex, minutes);
         cb(std::move(queries), std::move(error));
       });
 }

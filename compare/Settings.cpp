@@ -146,6 +146,68 @@ void Settings::add_to_history(const std::string& key,
 
 // ---------------------------------------------------------------------------
 
+static bool is_pair(const Json::Value& item)
+{
+  return item.isArray() && item.size() == 2 && item[0].isString() && item[1].isString();
+}
+
+std::vector<Settings::Pair> Settings::history_pairs(const std::string& key) const
+{
+  std::vector<Pair> result;
+  const auto& d = impl_->data;
+  if (!d.isMember("history") || !d["history"].isMember(key))
+    return result;
+
+  const auto& arr = d["history"][key];
+  if (!arr.isArray())
+    return result;
+
+  for (const auto& item : arr)
+  {
+    if (is_pair(item))
+      result.emplace_back(item[0].asString(), item[1].asString());
+  }
+  return result;
+}
+
+void Settings::add_to_history_pairs(const std::string& key,
+                                    const Pair& value,
+                                    int max_items)
+{
+  if (value.first.empty() && value.second.empty())
+    return;
+
+  auto& arr = impl_->data["history"][key];
+  if (!arr.isArray())
+    arr = Json::Value(Json::arrayValue);
+
+  Json::Value new_arr(Json::arrayValue);
+  Json::Value entry(Json::arrayValue);
+  entry.append(value.first);
+  entry.append(value.second);
+  new_arr.append(entry);
+  int count = 1;
+
+  for (const auto& item : arr)
+  {
+    if (!is_pair(item))
+      continue;
+    if (item[0].asString() == value.first && item[1].asString() == value.second)
+      continue;
+    if (count < max_items)
+    {
+      new_arr.append(item);
+      count++;
+    }
+  }
+
+  impl_->data["history"][key] = new_arr;
+
+  save();
+}
+
+// ---------------------------------------------------------------------------
+
 int Settings::get_int(const std::string& key, int default_val) const
 {
   const auto& d = impl_->data;

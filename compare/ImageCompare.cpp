@@ -200,6 +200,106 @@ struct Cluster
   long area;
 };
 
+// The difference mask: 0 = same, 1 = weak/AA difference, 2 = significant difference
+std::vector<uint8_t> difference_mask(const std::vector<uint8_t>& a,
+                                     const std::vector<uint8_t>& b,
+                                     std::size_t w,
+                                     std::size_t h,
+                                     double baseSq,
+                                     const StructuralDiffOptions& opts,
+                                     ImageDiffResult& res)
+{
+  std::vector<uint8_t> mask(w * h, 0);
+  for (int y = 0; y < (int)h; ++y)
+    for (int x = 0; x < (int)w; ++x)
+    {
+      const std::size_t p = (std::size_t(y) * w + x) * 4;
+      const double nd = std::fabs(colorDelta(a.data(), b.data(), p, p, false)) / 35215.0;
+      if (nd <= baseSq)
+        continue;
+      ++res.candidate_pixels;
+      const bool isStrong = std::sqrt(nd) >= opts.strong;
+      const bool isAA = antialiased(a.data(), x, y, w, h, b.data()) ||
+                        antialiased(b.data(), x, y, w, h, a.data());
+      if (isAA)
+        ++res.aa_ignored_pixels;
+      mask[std::size_t(y) * w + x] = (isStrong && !isAA) ? 2 : 1;
+    }
+  return mask;
+}
+
+// Grow the 8-connected cluster of significant pixels starting from (x,y)
+Cluster grow_cluster(const std::vector<uint8_t>& mask,
+                     std::vector<int>& label,
+                     std::size_t w,
+                     std::size_t h,
+                     int x,
+                     int y,
+                     int labelValue)
+{
+  Cluster c{x, y, x, y, 0};
+  std::queue<std::pair<int, int>> q;
+  q.emplace(x, y);
+  label[std::size_t(y) * w + x] = labelValue;
+  while (!q.empty())
+  {
+    const auto [cx, cy] = q.front();
+    q.pop();
+    ++c.area;
+    c.minx = std::min(c.minx, cx);
+    c.maxx = std::max(c.maxx, cx);
+    c.miny = std::min(c.miny, cy);
+    c.maxy = std::max(c.maxy, cy);
+    for (int dy = -1; dy <= 1; ++dy)
+      for (int dx = -1; dx <= 1; ++dx)
+      {
+        const int nx = cx + dx;
+        const int ny = cy + dy;
+        if (nx < 0 || ny < 0 || nx >= (int)w || ny >= (int)h)
+          continue;
+        const std::size_t ni = std::size_t(ny) * w + nx;
+        if (mask[ni] == 2 && !label[ni])
+        {
+          label[ni] = labelValue;
+          q.emplace(nx, ny);
+        }
+      }
+  }
+  return c;
+}
+
+// The 8-connected clusters of the significant pixels
+std::vector<Cluster> find_clusters(const std::vector<uint8_t>& mask, std::size_t w, std::size_t h)
+{
+  std::vector<int> label(w * h, 0);
+  std::vector<Cluster> clusters;
+  for (int y = 0; y < (int)h; ++y)
+    for (int x = 0; x < (int)w; ++x)
+    {
+      const std::size_t idx = std::size_t(y) * w + x;
+      if (mask[idx] != 2 || label[idx])
+        continue;
+      clusters.push_back(grow_cluster(mask, label, w, h, x, y, (int)clusters.size() + 1));
+    }
+  return clusters;
+}
+
+// Count the clusters which are large enough, and decide whether the images differ
+void summarize_clusters(const std::vector<Cluster>& clusters,
+                        const StructuralDiffOptions& opts,
+                        ImageDiffResult& res)
+{
+  for (const auto& c : clusters)
+  {
+    if (c.area < opts.minClusterArea)
+      continue;
+    ++res.cluster_count;
+    res.significant_pixels += c.area;
+    res.largest_cluster_area = std::max(res.largest_cluster_area, c.area);
+    if (c.area >= opts.failClusterArea)
+      res.differs = true;
+  }
+}
 }  // namespace
 
 ImageDiffResult structural_image_diff(const std::string& blob1,
@@ -237,73 +337,12 @@ ImageDiffResult structural_image_diff(const std::string& blob1,
   const double baseSq = opts.threshold * opts.threshold;
 
   // mask: 0 = same, 1 = weak/AA difference, 2 = significant difference
-  std::vector<uint8_t> mask(w * h, 0);
-  for (int y = 0; y < (int)h; ++y)
-    for (int x = 0; x < (int)w; ++x)
-    {
-      const std::size_t p = (std::size_t(y) * w + x) * 4;
-      const double nd = std::fabs(colorDelta(a.data(), b.data(), p, p, false)) / 35215.0;
-      if (nd <= baseSq)
-        continue;
-      ++res.candidate_pixels;
-      const bool isStrong = std::sqrt(nd) >= opts.strong;
-      const bool isAA = antialiased(a.data(), x, y, w, h, b.data()) ||
-                        antialiased(b.data(), x, y, w, h, a.data());
-      if (isAA)
-        ++res.aa_ignored_pixels;
-      mask[std::size_t(y) * w + x] = (isStrong && !isAA) ? 2 : 1;
-    }
+  std::vector<uint8_t> mask = difference_mask(a, b, w, h, baseSq, opts, res);
 
   // 8-connected clustering of the significant pixels.
-  std::vector<int> label(w * h, 0);
-  std::vector<Cluster> clusters;
-  for (int y = 0; y < (int)h; ++y)
-    for (int x = 0; x < (int)w; ++x)
-    {
-      const std::size_t idx = std::size_t(y) * w + x;
-      if (mask[idx] != 2 || label[idx])
-        continue;
-      Cluster c{x, y, x, y, 0};
-      std::queue<std::pair<int, int>> q;
-      q.emplace(x, y);
-      label[idx] = (int)clusters.size() + 1;
-      while (!q.empty())
-      {
-        const auto [cx, cy] = q.front();
-        q.pop();
-        ++c.area;
-        c.minx = std::min(c.minx, cx);
-        c.maxx = std::max(c.maxx, cx);
-        c.miny = std::min(c.miny, cy);
-        c.maxy = std::max(c.maxy, cy);
-        for (int dy = -1; dy <= 1; ++dy)
-          for (int dx = -1; dx <= 1; ++dx)
-          {
-            const int nx = cx + dx;
-            const int ny = cy + dy;
-            if (nx < 0 || ny < 0 || nx >= (int)w || ny >= (int)h)
-              continue;
-            const std::size_t ni = std::size_t(ny) * w + nx;
-            if (mask[ni] == 2 && !label[ni])
-            {
-              label[ni] = (int)clusters.size() + 1;
-              q.emplace(nx, ny);
-            }
-          }
-      }
-      clusters.push_back(c);
-    }
+  std::vector<Cluster> clusters = find_clusters(mask, w, h);
 
-  for (const auto& c : clusters)
-  {
-    if (c.area < opts.minClusterArea)
-      continue;
-    ++res.cluster_count;
-    res.significant_pixels += c.area;
-    res.largest_cluster_area = std::max(res.largest_cluster_area, c.area);
-    if (c.area >= opts.failClusterArea)
-      res.differs = true;
-  }
+  summarize_clusters(clusters, opts, res);
 
   // Anti-aliasing flood guard (see StructuralDiffOptions::maxAaFraction).
   if (opts.maxAaFraction > 0 && res.aa_ignored_pixels >= opts.aaFloodMinPixels &&

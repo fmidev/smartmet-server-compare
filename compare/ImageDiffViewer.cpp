@@ -115,6 +115,66 @@ struct PreparedImages
   Glib::RefPtr<Gdk::Pixbuf> pb2;
 };
 
+// "<format> <W>×<H>" of one side
+std::string describe_side(const std::string& fmt, const Glib::RefPtr<Gdk::Pixbuf>& pb)
+{
+  std::ostringstream s;
+  s << fmt;
+  if (pb)
+    s << ' ' << pb->get_width() << "×" << pb->get_height();
+  return s.str();
+}
+
+// Append the PSNR if it has been computed
+void append_psnr(std::ostream& oss, double psnr)
+{
+  if (!std::isnan(psnr))
+  {
+    oss << "PSNR: ";
+    if (std::isinf(psnr))
+      oss << "∞ (identical)";
+    else
+      oss << std::fixed << std::setprecision(1) << psnr << " dB";
+    oss << "    ";
+  }
+}
+
+// Append the structural verdict if it has been computed
+void append_structural_verdict(std::ostream& oss, const ImageDiffResult& d)
+{
+  if (!d.computed || d.size_mismatch)
+    return;
+
+  oss << "Structural: ";
+  if (d.differs)
+  {
+    oss << "different";
+    if (d.aa_flood)
+      oss << " (sub-pixel shift over " << d.aa_ignored_pixels << " px)";
+    else
+      oss << " (" << d.cluster_count << " cluster"
+          << (d.cluster_count == 1 ? "" : "s") << ", largest "
+          << d.largest_cluster_area << " px)";
+  }
+  else if (d.significant_pixels > 0)
+  {
+    // Solid non-AA clusters below the "significant" bar — the signature of
+    // a small content change such as a changed label/value or symbol.
+    oss << "check — possible label/value change ("
+        << d.cluster_count << " solid cluster"
+        << (d.cluster_count == 1 ? "" : "s") << ", largest "
+        << d.largest_cluster_area << " px, no anti-aliasing)";
+  }
+  else
+  {
+    oss << "anti-aliasing / edge rendering only";
+    if (d.candidate_pixels > 0)
+      oss << " (" << d.candidate_pixels
+          << " px differ, no significant change)";
+  }
+  oss << "    ";
+}
+
 }  // namespace
 
 std::shared_ptr<void>
@@ -176,16 +236,6 @@ void ImageDiffViewer::show(const CompareResult& result,
   const std::string fmt1 = short_format_tag(result.content_type1, result.kind1);
   const std::string fmt2 = short_format_tag(result.content_type2, result.kind2);
 
-  auto describe_side = [&](const std::string& fmt,
-                           const Glib::RefPtr<Gdk::Pixbuf>& pb) -> std::string
-  {
-    std::ostringstream s;
-    s << fmt;
-    if (pb)
-      s << ' ' << pb->get_width() << "×" << pb->get_height();
-    return s.str();
-  };
-
   std::ostringstream oss;
   if (is_mixed())
   {
@@ -195,50 +245,11 @@ void ImageDiffViewer::show(const CompareResult& result,
   }
   else
   {
-    if (!std::isnan(result.psnr))
-    {
-      oss << "PSNR: ";
-      if (std::isinf(result.psnr))
-        oss << "∞ (identical)";
-      else
-        oss << std::fixed << std::setprecision(1) << result.psnr << " dB";
-      oss << "    ";
-    }
+    append_psnr(oss, result.psnr);
 
     // Structural verdict: explains why a low-PSNR pair may still be "equal"
     // (only text/symbol anti-aliasing jitter) or is genuinely different.
-    const auto& d = result.image_diff;
-    if (d.computed && !d.size_mismatch)
-    {
-      oss << "Structural: ";
-      if (d.differs)
-      {
-        oss << "different";
-        if (d.aa_flood)
-          oss << " (sub-pixel shift over " << d.aa_ignored_pixels << " px)";
-        else
-          oss << " (" << d.cluster_count << " cluster"
-              << (d.cluster_count == 1 ? "" : "s") << ", largest "
-              << d.largest_cluster_area << " px)";
-      }
-      else if (d.significant_pixels > 0)
-      {
-        // Solid non-AA clusters below the "significant" bar — the signature of
-        // a small content change such as a changed label/value or symbol.
-        oss << "check — possible label/value change ("
-            << d.cluster_count << " solid cluster"
-            << (d.cluster_count == 1 ? "" : "s") << ", largest "
-            << d.largest_cluster_area << " px, no anti-aliasing)";
-      }
-      else
-      {
-        oss << "anti-aliasing / edge rendering only";
-        if (d.candidate_pixels > 0)
-          oss << " (" << d.candidate_pixels
-              << " px differ, no significant change)";
-      }
-      oss << "    ";
-    }
+    append_structural_verdict(oss, result.image_diff);
     oss << label1 << ": " << describe_side(fmt1, pb1_)
         << "    "
         << label2 << ": " << describe_side(fmt2, pb2_);

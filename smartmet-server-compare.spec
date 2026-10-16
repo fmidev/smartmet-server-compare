@@ -60,6 +60,7 @@ rm -rf $RPM_BUILD_ROOT
 
 %changelog
 * Fri Oct 16 2026 Mika Heiskanen <mika.heiskanen@fmi.fi> - 26.10.16-1.fmi
+- Optional match regex filter for fetching queries
 - The access log import no longer uses std::regex
 - Fixed compiler warnings and clang-tidy findings (unused code, unreachable code, empty statements, member initialization, parameter passing, noexcept), no functional changes
 

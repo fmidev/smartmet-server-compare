@@ -4,7 +4,9 @@
 #include <gtkmm/box.h>
 #include <gtkmm/button.h>
 #include <gtkmm/checkbutton.h>
+#include <gtkmm/cellrenderertext.h>
 #include <gtkmm/comboboxtext.h>
+#include <gtkmm/entry.h>
 #include <gtkmm/label.h>
 #include <gtkmm/spinbutton.h>
 
@@ -15,7 +17,8 @@
 
 /**
  * Three-row input panel above the request list:
- *   Row 1: source URL, prefix filter, minutes, [Fetch queries] [Load from file]
+ *   Row 1: source URL, prefix filter, match regex, minutes, [Fetch queries]
+ *          [Load from file]
  *   Row 2: server1, server2, max concurrent, max size, [Compare all] [Stop]
  *   Row 3: normalization options (ignore server host in response URLs, …)
  *
@@ -34,6 +37,7 @@ class InputBar : public Gtk::Box
   // ----- Current input values -----
   std::string source_url()  const;
   std::string prefix()      const;
+  std::string match_regex() const;
   int         minutes()     const;
   std::string server1_url() const;
   std::string server2_url() const;
@@ -68,13 +72,21 @@ class InputBar : public Gtk::Box
   sigc::signal<void()>& signal_stop()            { return sig_stop_; }
 
  private:
-  void load_combo(Gtk::ComboBoxText& combo, const std::string& key);
-  void save_combo(Gtk::ComboBoxText& combo, const std::string& key);
-
   // The source server, server 1 and server 2 combos share one history,
   // shown alphabetically; see load_server_combos().
   void load_server_combos(bool initial);
   void save_server_combo(Gtk::ComboBoxText& combo, const std::string& key);
+
+  // The prefix combo's history holds (prefix, match regex) pairs; picking
+  // an entry fills in both fields.
+  void load_filter_combo(bool initial);
+  void save_filter_combo();
+  void on_prefix_changed();
+
+  // Validate the match regex and update the entry's error state and the
+  // Fetch button.  An empty regex is valid (no filtering).
+  void on_regex_changed();
+  void update_fetch_sensitive();
 
   static std::string combo_text(const Gtk::ComboBoxText& combo);
   static void setup_combo_entry(Gtk::ComboBoxText& combo,
@@ -96,6 +108,9 @@ class InputBar : public Gtk::Box
   Gtk::ComboBoxText ent_source_{true};
   Gtk::Label lbl_prefix_{"Prefix filter:"};
   Gtk::ComboBoxText ent_prefix_{true};
+  Gtk::CellRendererText prefix_regex_cell_;   // regex column in the popup
+  Gtk::Label lbl_regex_{"Match (regex):"};
+  Gtk::Entry ent_regex_;
   Gtk::Label lbl_minutes_{"Minutes:"};
   Gtk::SpinButton spin_minutes_;
   Gtk::Button btn_fetch_{"Fetch queries"};
@@ -120,6 +135,9 @@ class InputBar : public Gtk::Box
   Gtk::Box         row3_{Gtk::ORIENTATION_HORIZONTAL, 6};
   Gtk::CheckButton chk_ignore_host_{"Ignore server host in response URLs"};
   Gtk::CheckButton chk_keep_alive_{"Reuse connections (HTTP keep-alive)"};
+
+  bool fetch_allowed_ = true;   // false while fetching / comparing
+  bool regex_valid_ = true;
 
   sigc::signal<void()> sig_fetch_;
   sigc::signal<void()> sig_load_;

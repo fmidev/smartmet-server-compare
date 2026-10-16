@@ -10,8 +10,9 @@
 
 /**
  * Fetches the "lastrequests" list from a SmartMet server's admin endpoint,
- * parses the JSON response, and filters entries whose RequestString starts with
- * a given prefix.
+ * parses the JSON response, and keeps entries whose RequestString starts with
+ * a given prefix and, if a match regex is given, contains a match for it
+ * (ECMAScript syntax, std::regex_search).
  *
  * Alternatively, queries can be loaded from a text file.  Two formats are
  * auto-detected per line:
@@ -27,9 +28,11 @@ class QueryFetcher
   using Callback = std::function<void(std::vector<QueryInfo> queries, std::string error)>;
 
   // Synchronous fetch from server admin endpoint.
+  // Empty prefix / match_regex disable the respective filter.
   // Returns {queries, ""} on success, {{}, error_message} on failure.
   static std::pair<std::vector<QueryInfo>, std::string> fetch(const std::string& server_url,
                                                               const std::string& prefix,
+                                                              const std::string& match_regex,
                                                               int minutes);
 
   // Load request strings from a text file.  Each line may be either a plain
@@ -45,7 +48,11 @@ class QueryFetcher
 
   // Asynchronous fetch from server – spawns a background thread, calls cb on
   // *that* thread when done.  The caller dispatches the result to the main thread.
-  void fetch_async(const std::string& server_url, const std::string& prefix, int minutes, Callback cb);
+  void fetch_async(const std::string& server_url,
+                   const std::string& prefix,
+                   const std::string& match_regex,
+                   int minutes,
+                   Callback cb);
 
   ~QueryFetcher();
   QueryFetcher() = default;

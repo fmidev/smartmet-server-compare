@@ -1,6 +1,8 @@
 #pragma once
 #include <filesystem>
+#include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 /**
@@ -12,9 +14,13 @@
  *   history(key)          – ordered list of strings (most-recent first).
  *                           add_to_history() deduplicates and caps the list.
  *
+ *   history_pairs(key)    – same, but each entry is a pair of strings that
+ *                           belong together (e.g. fetch prefix + regex).
+ *
  *   get_int / set_int     – simple integer scalars (spinner values etc.).
  *
- * Changes are written to disk immediately by add_to_history() / set_int().
+ * Changes are written to disk immediately by add_to_history() /
+ * add_to_history_pairs() / set_int().
  */
 class Settings
 {
@@ -34,6 +40,15 @@ class Settings
   // Replace the whole history for key, then save.
   void set_history(const std::string& key,
                    const std::vector<std::string>& values);
+
+  // Pair-valued history, stored as two-element JSON arrays.  Semantics as
+  // for history() / add_to_history(); a pair is stored unless both strings
+  // are empty.
+  using Pair = std::pair<std::string, std::string>;
+  std::vector<Pair> history_pairs(const std::string& key) const;
+  void add_to_history_pairs(const std::string& key,
+                            const Pair& value,
+                            int max_items = 20);
 
   int  get_int(const std::string& key, int default_val) const;
   void set_int(const std::string& key, int value);

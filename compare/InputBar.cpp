@@ -3,6 +3,7 @@
 #include <gtkmm/entry.h>
 
 #include <algorithm>
+#include <regex>
 #include <set>
 
 namespace
@@ -17,6 +18,11 @@ const int kServerHistoryMax = 40;
 const char* const kSourceKey = "source_server";
 const char* const kServer1Key = "server1";
 const char* const kServer2Key = "server2";
+
+// (prefix, match regex) pairs, most-recent first.  Supersedes the old
+// prefix-only "prefix" history, which seeds it once.
+const char* const kFilterHistory = "fetch_filters";
+const char* const kOldPrefixKey = "prefix";
 }  // namespace
 
 InputBar::InputBar(Settings& settings)
@@ -28,6 +34,21 @@ InputBar::InputBar(Settings& settings)
 
   lbl_prefix_.set_xalign(1.0F);
   setup_combo_entry(ent_prefix_, "/wfs", 10);
+  // Show each history entry's regex next to its prefix in the popup.  The
+  // ComboBoxText model's second column ("id") carries the regex.
+  prefix_regex_cell_.property_foreground() = "grey";
+  ent_prefix_.pack_start(prefix_regex_cell_, false);
+  ent_prefix_.add_attribute(prefix_regex_cell_, "text", 1);
+  ent_prefix_.signal_changed().connect(sigc::mem_fun(*this, &InputBar::on_prefix_changed));
+
+  lbl_regex_.set_xalign(1.0f);
+  ent_regex_.set_placeholder_text("e.g. who=MobileWeather");
+  ent_regex_.set_width_chars(20);
+  ent_regex_.set_tooltip_text(
+      "Optional: fetch only requests containing a match for this regular "
+      "expression (ECMAScript syntax, case-sensitive). Empty = no filtering. "
+      "Stored in the prefix filter history together with the prefix.");
+  ent_regex_.signal_changed().connect(sigc::mem_fun(*this, &InputBar::on_regex_changed));
 
   lbl_minutes_.set_xalign(1.0F);
   spin_minutes_.set_range(1, 1440);
@@ -47,6 +68,8 @@ InputBar::InputBar(Settings& settings)
   row1_.pack_start(ent_source_, true, true);
   row1_.pack_start(lbl_prefix_, false, false);
   row1_.pack_start(ent_prefix_, false, false);
+  row1_.pack_start(lbl_regex_, false, false);
+  row1_.pack_start(ent_regex_, false, false);
   row1_.pack_start(lbl_minutes_, false, false);
   row1_.pack_start(spin_minutes_, false, false);
   row1_.pack_start(btn_fetch_, false, false);
@@ -113,7 +136,7 @@ InputBar::InputBar(Settings& settings)
   pack_start(row3_, false, false);
 
   // ---- Initial values from Settings ----
-  load_combo(ent_prefix_, "prefix");
+  load_filter_combo(true);
   load_server_combos(true);
   spin_minutes_.set_value(settings_.get_int("minutes", 2));
   spin_concurrent_.set_value(settings_.get_int("max_concurrent", 4));
@@ -131,6 +154,7 @@ InputBar::InputBar(Settings& settings)
 
 std::string InputBar::source_url()  const { return combo_text(ent_source_); }
 std::string InputBar::prefix()      const { return combo_text(ent_prefix_); }
+std::string InputBar::match_regex() const { return ent_regex_.get_text(); }
 int         InputBar::minutes()     const { return static_cast<int>(spin_minutes_.get_value()); }
 std::string InputBar::server1_url() const { return combo_text(ent_srv1_); }
 std::string InputBar::server2_url() const { return combo_text(ent_srv2_); }
@@ -143,9 +167,15 @@ bool        InputBar::keep_alive() const { return chk_keep_alive_.get_active(); 
 // Sensitivity transitions
 // ---------------------------------------------------------------------------
 
+void InputBar::update_fetch_sensitive()
+{
+  btn_fetch_.set_sensitive(fetch_allowed_ && regex_valid_);
+}
+
 void InputBar::set_idle(bool has_queries)
 {
-  btn_fetch_.set_sensitive(true);
+  fetch_allowed_ = true;
+  update_fetch_sensitive();
   btn_load_file_.set_sensitive(true);
   btn_save_file_.set_sensitive(has_queries);
   btn_compare_.set_sensitive(has_queries);
@@ -155,7 +185,8 @@ void InputBar::set_idle(bool has_queries)
 
 void InputBar::start_fetching()
 {
-  btn_fetch_.set_sensitive(false);
+  fetch_allowed_ = false;
+  update_fetch_sensitive();
   btn_compare_.set_sensitive(false);
   btn_rerun_filtered_.set_sensitive(false);
   btn_save_file_.set_sensitive(false);
@@ -164,7 +195,8 @@ void InputBar::start_fetching()
 
 void InputBar::start_comparing()
 {
-  btn_fetch_.set_sensitive(false);
+  fetch_allowed_ = false;
+  update_fetch_sensitive();
   btn_load_file_.set_sensitive(false);
   btn_compare_.set_sensitive(false);
   btn_rerun_filtered_.set_sensitive(false);
@@ -185,7 +217,7 @@ void InputBar::notify_stopping()
 void InputBar::save_fetch_inputs()
 {
   save_server_combo(ent_source_, kSourceKey);
-  save_combo(ent_prefix_, "prefix");
+  save_filter_combo();
   settings_.set_int("minutes", minutes());
 }
 
@@ -221,25 +253,77 @@ void InputBar::setup_combo_entry(Gtk::ComboBoxText& combo,
   }
 }
 
-void InputBar::load_combo(Gtk::ComboBoxText& combo, const std::string& key)
+void InputBar::load_filter_combo(bool initial)
 {
-  const auto items = settings_.history(key);
-  combo.remove_all();
-  for (const auto& item : items)
-    combo.append(item);
+  if (initial && settings_.history_pairs(kFilterHistory).empty())
+  {
+    // Seed from the old prefix-only history, oldest first so the order
+    // is preserved.
+    const auto old = settings_.history(kOldPrefixKey);
+    for (auto it = old.rbegin(); it != old.rend(); ++it)
+      settings_.add_to_history_pairs(kFilterHistory, {*it, ""});
+  }
 
+  const auto items = settings_.history_pairs(kFilterHistory);
+  ent_prefix_.remove_all();
+  for (const auto& [prefix, regex] : items)
+    ent_prefix_.append(regex, prefix);
+
+  // Fill the fields with the most recent pair.  After a save that is what
+  // the user just used, so this keeps the entries as they were.
   if (!items.empty())
-    if (auto* e = dynamic_cast<Gtk::Entry*>(combo.get_child()))
-      e->set_text(items.front());
+  {
+    if (auto* e = dynamic_cast<Gtk::Entry*>(ent_prefix_.get_child()))
+      e->set_text(items.front().first);
+    ent_regex_.set_text(items.front().second);
+  }
 }
 
-void InputBar::save_combo(Gtk::ComboBoxText& combo, const std::string& key)
+void InputBar::save_filter_combo()
 {
-  const std::string val = combo_text(combo);
-  if (val.empty())
-    return;
-  settings_.add_to_history(key, val);
-  load_combo(combo, key);
+  settings_.add_to_history_pairs(kFilterHistory, {prefix(), match_regex()});
+  load_filter_combo(false);
+}
+
+void InputBar::on_prefix_changed()
+{
+  // Typing in the entry also emits "changed", but with no active row; only
+  // a pick from the popup carries a regex along.
+  if (ent_prefix_.get_active_row_number() >= 0)
+    ent_regex_.set_text(ent_prefix_.get_active_id());
+}
+
+void InputBar::on_regex_changed()
+{
+  const std::string text = ent_regex_.get_text();
+  std::string error;
+  if (!text.empty())
+  {
+    try
+    {
+      std::regex re(text, std::regex::ECMAScript);
+    }
+    catch (const std::regex_error& e)
+    {
+      error = e.what();
+    }
+  }
+
+  regex_valid_ = error.empty();
+  auto ctx = ent_regex_.get_style_context();
+  if (regex_valid_)
+  {
+    ctx->remove_class("error");
+    ent_regex_.unset_icon(Gtk::ENTRY_ICON_SECONDARY);
+  }
+  else
+  {
+    ctx->add_class("error");
+    ent_regex_.set_icon_from_icon_name("dialog-warning-symbolic", Gtk::ENTRY_ICON_SECONDARY);
+    ent_regex_.set_icon_tooltip_text("Invalid regular expression: " + error,
+                                     Gtk::ENTRY_ICON_SECONDARY);
+  }
+  update_fetch_sensitive();
 }
 
 void InputBar::load_server_combos(bool initial)

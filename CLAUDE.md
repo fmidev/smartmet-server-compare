@@ -52,6 +52,22 @@ All source lives in `compare/`:
   `UrlUtils`, `Settings` (JSON persistence in
   `~/.local/share/smartmet-server-compare/history.json`), `Types.h`.
 
+## Fetch filters (prefix + match regex)
+
+`QueryFetcher::fetch()` keeps a lastrequests entry only if it starts with
+the prefix *and*, when the "Match (regex)" field is non-empty, contains a
+match for that regex (`std::regex_search`, ECMAScript, case-sensitive) —
+e.g. `who=MobileWeather` to pick the mobile app's requests.
+`InputBar::on_regex_changed()` compiles the regex on every edit; an
+invalid one marks the entry with the `error` style class and a warning
+icon and disables Fetch (`fetch_allowed_ && regex_valid_`).
+
+Both values are stored together as `[prefix, regex]` pairs in the
+`fetch_filters` history (`Settings::history_pairs()`), seeded once from
+the old prefix-only `prefix` history.  The prefix combo lists the pairs —
+the regex lives in the ComboBoxText "id" column and is shown greyed by an
+extra cell renderer — and picking one fills in both fields.
+
 ## Text-diff rendering (collapsed context view)
 
 `DiffView` renders only the differing lines plus `context_lines()`

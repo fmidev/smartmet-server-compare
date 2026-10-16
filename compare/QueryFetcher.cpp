@@ -33,6 +33,42 @@ std::string make_admin_url(const std::string& server_url, int minutes)
 // ---------------------------------------------------------------------------
 
 /* static */
+namespace
+{
+// The name of the member holding the request string, if any
+std::optional<std::string> find_request_member(const Json::Value& item)
+{
+  if (item.isMember("RequestString"))
+    return std::string("RequestString");
+  if (item.isMember("URL"))
+    return std::string("URL");
+  return std::nullopt;
+}
+
+// The value of a string member, or an empty string if there is no such string member
+std::string string_member(const Json::Value& item, const std::string& name)
+{
+  return item.isMember(name) && item[name].isString() ? item[name].asString() : "";
+}
+
+// True for a new non-empty request with the given prefix and matching the optional regex
+bool accept_request(const std::string& rs,
+                    const std::string& prefix,
+                    const std::optional<boost::regex>& match_re,
+                    std::unordered_set<std::string>& seen)
+{
+  if (rs.empty())
+    return false;
+  if (!prefix.empty() && rs.substr(0, prefix.size()) != prefix)
+    return false;
+  if (match_re && !boost::regex_search(rs, *match_re))
+    return false;
+  if (!seen.insert(rs).second)
+    return false;
+  return true;
+}
+}  // namespace
+
 std::pair<std::vector<QueryInfo>, std::string> QueryFetcher::fetch(const std::string& server_url,
                                                                     const std::string& prefix,
                                                                     const std::string& match_regex,
@@ -86,28 +122,17 @@ std::pair<std::vector<QueryInfo>, std::string> QueryFetcher::fetch(const std::st
         continue;
       if (!request_member)
       {
-        if (item.isMember("RequestString"))
-          request_member = "RequestString";
-        else if (item.isMember("URL"))
-          request_member = "URL";
-        else
+        request_member = find_request_member(item);
+        if (!request_member)
           return {{}, "JSON objects do not contain 'RequestString' or 'URL' members"};
       }
-      std::string rs = request_member && item.isMember(*request_member) && item[*request_member].isString()
-                       ? item[*request_member].asString() : "";
-      if (rs.empty())
-        continue;
-      if (!prefix.empty() && rs.substr(0, prefix.size()) != prefix)
-        continue;
-      if (match_re && !boost::regex_search(rs, *match_re))
-        continue;
-      if (!seen.insert(rs).second)
+      std::string rs = string_member(item, *request_member);
+      if (!accept_request(rs, prefix, match_re, seen))
         continue;
 
       QueryInfo qi;
       qi.request_string = std::move(rs);
-      qi.time_utc = item.isMember("Time") && item["Time"].isString()
-                    ? item["Time"].asString() : "";
+      qi.time_utc = string_member(item, "Time");
       queries.push_back(std::move(qi));
     }
   }

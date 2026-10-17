@@ -38,7 +38,6 @@ Application-wide (work regardless of focus):
 | Shortcut | Action                                     |
 | :------- | :----------------------------------------- |
 | Ctrl+O   | Load request list / access log from file   |
-| Ctrl+F   | Fetch queries from the source server       |
 | Ctrl+R   | Compare all queries                        |
 | F5       | Compare all queries                        |
 | Escape   | Stop the running fetch or comparison       |
@@ -52,6 +51,10 @@ Text-diff view (when either diff pane has keyboard focus):
 | Shift+Tab | Jump to the previous difference |
 | F3        | Jump to the next difference     |
 | Shift+F3  | Jump to the previous difference |
+| Ctrl+F    | Open the search bar             |
+
+While the search bar is open, F3 / Shift+F3 (and Enter / Shift+Enter in the
+search field) jump to the next / previous match, and Escape closes it.
 
 On opening a text comparison the view scrolls automatically to the first
 difference.

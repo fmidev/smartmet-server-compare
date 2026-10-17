@@ -24,10 +24,13 @@ distributions.
 
 ### Dependencies
 
-Build: `gtkmm30-devel`, `ImageMagick-c++-devel`, `libcurl-devel`,
-`tinyxml2-devel`, `jsoncpp-devel`, `gcc-c++`, `make`.
+Build: `gtkmm30-devel` (`gtkmm3.0-devel` on RHEL 10),
+`ImageMagick-c++-devel`, `libcurl-devel`, `tinyxml2-devel`, `jsoncpp-devel`,
+Boost (`boost-devel`, regex), `dtl` (the diff template library used for the
+text diff), `gcc-c++`, `make`, `autoconf`, `automake`.
 
-Runtime: the matching `-libs` packages plus `adwaita-icon-theme`.
+Runtime: the matching library packages (including Boost.Regex) plus
+`adwaita-icon-theme`.
 
 ## Source layout
 
